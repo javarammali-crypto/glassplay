@@ -1,5 +1,6 @@
 package com.glassplay.app.data
 
+import android.net.Uri
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -74,7 +75,13 @@ data class InstalledAddon(
     val manifest: AddonManifest,
     val raw: String,
 ) {
-    val baseUrl: String get() = transportUrl.substringBeforeLast("/manifest.json")
+    val baseUrl: String get() = transportUrl.substringBefore('?').substringBeforeLast("/manifest.json")
+
+    /** Builds a resource URL the way Stremio does, keeping any query string from the add-on link. */
+    fun resourceUrl(path: String): String {
+        val query = transportUrl.substringAfter('?', "")
+        return baseUrl + path + if (query.isEmpty()) "" else "?$query"
+    }
 
     fun hasResource(name: String): Boolean = manifest.resources.any { it.name == name }
 
@@ -248,6 +255,8 @@ fun parseMeta(o: JSONObject, fallbackType: String): MetaDetail? {
 
 // ---------- Streams ----------
 
+data class SubtitleItem(val id: String, val url: String, val lang: String, val source: String)
+
 data class StreamItem(
     val addonName: String,
     val name: String?,
@@ -256,19 +265,35 @@ data class StreamItem(
     val ytId: String?,
     val externalUrl: String?,
     val infoHash: String?,
+    val fileIdx: Int?,
+    /** Trackers and DHT hints for torrents ("tracker:udp://…", "dht:…"). */
+    val sources: List<String>,
+    val filename: String?,
     val headers: Map<String, String>,
+    val subtitles: List<SubtitleItem>,
 ) {
-    /** Streams GlassPlay can open: direct video links, YouTube, or external links. */
-    val playable: Boolean get() = url != null || ytId != null || externalUrl != null
+    val isTorrent: Boolean get() = url == null && infoHash != null
+
+    /** Streams GlassPlay can open: direct video links, torrents, YouTube, or external links. */
+    val playable: Boolean get() = url != null || infoHash != null || ytId != null || externalUrl != null
 }
 
 fun parseStream(o: JSONObject, addonName: String): StreamItem {
+    val hints = o.optJSONObject("behaviorHints")
     val headers = mutableMapOf<String, String>()
-    o.optJSONObject("behaviorHints")
-        ?.optJSONObject("proxyHeaders")
+    hints?.optJSONObject("proxyHeaders")
         ?.optJSONObject("request")
         ?.let { h -> h.keys().forEach { k -> h.str(k)?.let { headers[k] = it } } }
-    val url = o.str("url")?.takeIf { it.startsWith("http://", true) || it.startsWith("https://", true) }
+
+    val rawUrl = o.str("url")
+    val url = rawUrl?.takeIf { it.startsWith("http://", true) || it.startsWith("https://", true) }
+    // Some add-ons hand out magnet links in "url" instead of an infoHash.
+    val magnet = rawUrl?.takeIf { it.startsWith("magnet:", true) }?.let { TorrentLink.parse(it) }
+    val infoHash = normalizeInfoHash(o.str("infoHash")) ?: magnet?.infoHash
+    val fileIdx = if (o.has("fileIdx") && !o.isNull("fileIdx")) o.optInt("fileIdx", -1).takeIf { it >= 0 } else magnet?.fileIdx
+
+    val subtitles = o.optJSONArray("subtitles").mapObjects { parseSubtitle(it, addonName) }
+
     return StreamItem(
         addonName = addonName,
         name = o.str("name"),
@@ -276,9 +301,109 @@ fun parseStream(o: JSONObject, addonName: String): StreamItem {
         url = url,
         ytId = o.str("ytId"),
         externalUrl = o.str("externalUrl"),
-        infoHash = o.str("infoHash"),
+        infoHash = infoHash,
+        fileIdx = fileIdx,
+        sources = o.strList("sources") + magnet?.trackers.orEmpty().map { "tracker:$it" },
+        filename = hints?.str("filename"),
         headers = headers,
+        subtitles = subtitles,
     )
+}
+
+fun parseSubtitle(o: JSONObject, source: String): SubtitleItem? {
+    val url = o.str("url")?.takeIf { it.startsWith("http://", true) || it.startsWith("https://", true) } ?: return null
+    return SubtitleItem(
+        id = o.str("id") ?: url,
+        url = url,
+        lang = o.str("lang") ?: "und",
+        source = source,
+    )
+}
+
+/** Accepts 40-char hex or 32-char base32 info hashes and returns lowercase hex. */
+fun normalizeInfoHash(raw: String?): String? {
+    val h = raw?.trim() ?: return null
+    if (h.length == 40 && h.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }) return h.lowercase()
+    if (h.length == 32) {
+        val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+        val out = StringBuilder()
+        var buffer = 0
+        var bits = 0
+        for (c in h.uppercase()) {
+            val v = alphabet.indexOf(c)
+            if (v < 0) return null
+            buffer = (buffer shl 5) or v
+            bits += 5
+            if (bits >= 8) {
+                bits -= 8
+                out.append("%02x".format((buffer shr bits) and 0xff))
+            }
+        }
+        return out.toString().takeIf { it.length == 40 }
+    }
+    return null
+}
+
+/**
+ * A torrent to stream, stored as a magnet link so it survives in watch history.
+ * The file to play is kept in the standard "so" (select only) parameter.
+ */
+data class TorrentLink(
+    val infoHash: String,
+    val fileIdx: Int?,
+    val trackers: List<String>,
+    val fileName: String?,
+) {
+    fun toUri(): String = buildString {
+        append("magnet:?xt=urn:btih:").append(infoHash)
+        trackers.forEach { append("&tr=").append(Uri.encode(it)) }
+        fileIdx?.let { append("&so=").append(it) }
+        fileName?.let { append("&x.fn=").append(Uri.encode(it)) }
+    }
+
+    /** The magnet handed to the torrent engine: hash and trackers only. */
+    fun toEngineUri(): String = buildString {
+        append("magnet:?xt=urn:btih:").append(infoHash)
+        (trackers + DEFAULT_TRACKERS).distinct().forEach { append("&tr=").append(Uri.encode(it)) }
+    }
+
+    companion object {
+        fun parse(uri: String): TorrentLink? {
+            if (!uri.startsWith("magnet:?", true)) return null
+            var hash: String? = null
+            var fileIdx: Int? = null
+            var fileName: String? = null
+            val trackers = mutableListOf<String>()
+            for (part in uri.substringAfter('?').split('&')) {
+                val key = part.substringBefore('=').lowercase()
+                val value = Uri.decode(part.substringAfter('=', ""))
+                when (key) {
+                    "xt" -> if (value.startsWith("urn:btih:", true)) hash = normalizeInfoHash(value.substring(9))
+                    "tr" -> if (value.isNotBlank()) trackers.add(value)
+                    "so" -> fileIdx = value.substringBefore(',').substringBefore('-').toIntOrNull()
+                    "x.fn" -> fileName = value.takeIf { it.isNotBlank() }
+                }
+            }
+            return hash?.let { TorrentLink(it, fileIdx, trackers, fileName) }
+        }
+
+        fun fromStream(s: StreamItem): TorrentLink? {
+            val hash = s.infoHash ?: return null
+            val trackers = s.sources.filter { it.startsWith("tracker:") }.map { it.removePrefix("tracker:") }
+            return TorrentLink(hash, s.fileIdx, trackers.distinct(), s.filename)
+        }
+
+        val DEFAULT_TRACKERS = listOf(
+            "udp://tracker.opentrackr.org:1337/announce",
+            "udp://open.demonii.com:1337/announce",
+            "udp://open.stealth.si:80/announce",
+            "udp://tracker.torrent.eu.org:451/announce",
+            "udp://exodus.desync.com:6969/announce",
+            "udp://tracker.openbittorrent.com:6969/announce",
+            "udp://explodie.org:6969/announce",
+            "udp://tracker.tiny-vps.com:6969/announce",
+        )
+    }
 }
 
 const val TYPE_MOVIE = "movie"

@@ -25,6 +25,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
@@ -36,7 +37,9 @@ import androidx.compose.ui.unit.dp
 import com.glassplay.app.Graph
 import com.glassplay.app.data.StreamItem
 import com.glassplay.app.data.StreamResults
+import com.glassplay.app.data.TorrentLink
 import com.glassplay.app.player.openInExternalPlayer
+import com.glassplay.app.player.openLink
 import com.glassplay.app.player.playStream
 import com.glassplay.app.ui.components.Spinner
 import com.glassplay.app.ui.components.bounceClick
@@ -60,6 +63,16 @@ fun StreamSheet(target: StreamTarget, onDismiss: () -> Unit) {
             throw e
         } catch (e: Exception) {
             StreamResults(emptyList(), 0, 0)
+        }
+    }
+    // Warm the cache so the player can attach subtitles without waiting.
+    LaunchedEffect(target) {
+        try {
+            Graph.addons.loadSubtitles(target.meta.type, target.videoId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Subtitles are optional.
         }
     }
 
@@ -100,7 +113,7 @@ fun StreamSheet(target: StreamTarget, onDismiss: () -> Unit) {
                 )
                 r.playableCount == 0 && r.unsupported > 0 -> Message(
                     "No playable streams",
-                    "Your add-ons returned ${r.unsupported} torrent link${if (r.unsupported == 1) "" else "s"}, which GlassPlay doesn't play. It plays direct video links and YouTube.",
+                    "Your add-ons returned ${r.unsupported} stream${if (r.unsupported == 1) "" else "s"} in a format GlassPlay can't open.",
                 )
                 r.playableCount == 0 -> Message(
                     "No streams found",
@@ -124,7 +137,11 @@ fun StreamSheet(target: StreamTarget, onDismiss: () -> Unit) {
                                     onDismiss()
                                     playStream(context, target.meta, target.video, s)
                                 },
-                                onExternal = s.url?.let { url -> { openInExternalPlayer(context, url, target.meta.name) } },
+                                onExternal = when {
+                                    s.url != null -> { { openInExternalPlayer(context, s.url, target.meta.name) } }
+                                    s.isTorrent -> TorrentLink.fromStream(s)?.let { link -> { openLink(context, link.toEngineUri()) } }
+                                    else -> null
+                                },
                             )
                         }
                     }
@@ -172,7 +189,9 @@ private fun StreamRow(stream: StreamItem, onPlay: () -> Unit, onExternal: (() ->
             stream.title?.let {
                 Text(it, style = GlassType.caption, color = TextTertiary, maxLines = 3, overflow = TextOverflow.Ellipsis)
             }
-            if (stream.url == null && stream.ytId != null) {
+            if (stream.isTorrent) {
+                Text("Torrent · streams in GlassPlay", style = GlassType.caption, color = TextSecondary)
+            } else if (stream.url == null && stream.ytId != null) {
                 Text("Opens in YouTube", style = GlassType.caption, color = TextSecondary)
             }
         }

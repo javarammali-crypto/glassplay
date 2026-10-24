@@ -43,6 +43,7 @@ import com.glassplay.app.data.CatalogDef
 import com.glassplay.app.data.InstalledAddon
 import com.glassplay.app.data.MAIN_TYPES
 import com.glassplay.app.data.MetaPreview
+import com.glassplay.app.data.TYPE_MOVIE
 import com.glassplay.app.data.typeLabel
 import com.glassplay.app.ui.components.GlassTextField
 import com.glassplay.app.ui.components.LargeTitle
@@ -80,8 +81,8 @@ fun SearchScreen(onOpen: (String, String) -> Unit) {
     var state by remember { mutableStateOf<SearchState>(SearchState.Idle) }
 
     val searchCatalogs = remember(addons) {
-        addons.flatMap { a -> a.manifest.catalogs.filter { it.supportsSearch && it.type in MAIN_TYPES }.map { a to it } }
-            .sortedBy { if (it.second.type == "movie") 0 else 1 }
+        addons.flatMap { a -> a.manifest.catalogs.filter { it.supportsSearch }.map { a to it } }
+            .sortedBy { (_, cat) -> if (cat.type == TYPE_MOVIE) 0 else if (cat.type in MAIN_TYPES) 1 else 2 }
     }
 
     LaunchedEffect(query, searchCatalogs) {

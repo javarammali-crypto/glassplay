@@ -86,8 +86,8 @@ fun HomeScreen(onOpen: (String, String) -> Unit, onGoAddons: () -> Unit) {
     val continueList = remember(entries) { entries.filter { !(it.completed && it.type == "movie") }.take(20) }
     val rows = remember(addons) {
         addons.flatMap { a ->
-            a.manifest.catalogs.filter { it.isHomeRow && it.type in MAIN_TYPES }.map { a to it }
-        }
+            a.manifest.catalogs.filter { it.isHomeRow }.map { a to it }
+        }.sortedBy { (_, cat) -> if (cat.type in MAIN_TYPES) 0 else 1 }
     }
     var menuFor by remember { mutableStateOf<WatchEntry?>(null) }
 

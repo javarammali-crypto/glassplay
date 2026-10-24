@@ -8,10 +8,17 @@ An Android media center with a glass-style interface and a plug-in system compat
 - **Discover:** Movies and TV Shows tabs, catalog and genre filters, infinite scrolling.
 - **Search** across every installed add-on that supports it, with recent searches.
 - **Details:** artwork, rating, cast, trailer, and a season and episode picker that marks watched episodes.
-- **Player:** resumes exactly where you stopped. Supports direct video links and HLS. Streams can also be opened in another player app.
-- **Add-ons:** install any add-on by pasting its manifest link, reorder by priority, or remove.
+- **Player:** resumes exactly where you stopped. Supports direct video links, HLS, DASH and torrents, with subtitles from your add-ons and software decoding for AC3/DTS/TrueHD audio. Streams can also be opened in another player app.
+- **Add-ons:** install any Stremio add-on by pasting its manifest link (including configured links and `stremio://` links), reorder by priority, or remove.
 
-GlassPlay plays direct HTTP(S) video links and opens YouTube links in YouTube. It doesn't play torrent links.
+## Stremio add-on support
+
+GlassPlay speaks the same add-on protocol as Stremio, so add-ons built for Stremio work here:
+
+- **Catalogs, metadata and search** from any add-on, for every content type (movies, series, TV channels, anime…).
+- **Streams:** direct links (`url`, with `proxyHeaders`), torrents (`infoHash` + `fileIdx` + `sources`, or magnet links), YouTube (`ytId`) and `externalUrl`.
+- **Torrents** are streamed inside the app, like Stremio's streaming server: the pieces the player needs are downloaded first, so playback starts before the download finishes and seeking works. Downloaded data is kept in the app's cache only while you watch.
+- **Subtitles** from subtitle add-ons (such as OpenSubtitles) and from streams that include their own. Pick them with the CC button in the player.
 
 ## Getting the APK
 
@@ -25,5 +32,6 @@ Each build is signed with the same key, so new versions install over old ones an
 ## Project layout
 
 - `data/`: add-on protocol client, installed add-ons, watch history
+- `torrent/`: torrent streaming engine (libtorrent) and the local server the player reads from
 - `ui/`: Compose screens and the glass components
 - `player/`: Media3 ExoPlayer screen and resume logic

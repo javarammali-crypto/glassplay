@@ -5,7 +5,8 @@ An Android media center with a glass-style interface and a plug-in system compat
 ## Features
 
 - **Home:** featured carousel, Continue Watching with progress, and rows from your add-ons' catalogs.
-- **Discover:** Movies and TV Shows tabs, catalog and genre filters, infinite scrolling.
+- **Discover:** Movies and TV Shows tabs, catalog and genre filters, infinite scrolling, plus built-in catalogs for streaming services (Netflix, Prime Video, JioHotstar, Disney+, HBO Max, Apple TV+, ZEE5, Sony LIV and more).
+- **Franchises:** Marvel, DC, Harry Potter, Star Wars, Bond, Fast & Furious and 40+ other franchises, each with every movie in release order.
 - **Search** across every installed add-on that supports it, with recent searches.
 - **Details:** artwork, rating, cast, trailer, and a season and episode picker that marks watched episodes.
 - **Downloads:** save torrent or direct-link streams to the device and watch them offline. Torrent downloads keep going in the background, and a torrent can be played while it's still downloading.

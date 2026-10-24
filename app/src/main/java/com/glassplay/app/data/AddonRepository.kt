@@ -53,7 +53,7 @@ class AddonRepository(
         _installed.value = list
     }
 
-    /** Installs the default metadata add-on on first launch, otherwise refreshes manifests. */
+    /** Installs the default add-ons on first launch, otherwise refreshes manifests. */
     fun bootstrap() {
         scope.launch {
             if (!prefs.getBoolean(KEY_SEEDED, false)) {
@@ -66,7 +66,26 @@ class AddonRepository(
             } else {
                 refreshAll()
             }
+            seedSubtitles()
         }
+    }
+
+    /**
+     * Stremio installs OpenSubtitles v3 for everyone, which is why its add-ons rarely come with
+     * subtitles of their own. Add it once, for new and existing installs; if the viewer removes
+     * it later, it stays removed.
+     */
+    private suspend fun seedSubtitles() {
+        if (prefs.getBoolean(KEY_SUBTITLES_SEEDED, false)) return
+        if (_installed.value.any { it.hasResource("subtitles") }) {
+            prefs.edit().putBoolean(KEY_SUBTITLES_SEEDED, true).apply()
+            return
+        }
+        runCatching { client.fetchManifest(OPENSUBTITLES_URL) }
+            .onSuccess {
+                install(it)
+                prefs.edit().putBoolean(KEY_SUBTITLES_SEEDED, true).apply()
+            }
     }
 
     fun install(addon: InstalledAddon) {
@@ -157,6 +176,8 @@ class AddonRepository(
 
     companion object {
         const val CINEMETA_URL = "https://v3-cinemeta.strem.io/manifest.json"
+        const val OPENSUBTITLES_URL = "https://opensubtitles-v3.strem.io/manifest.json"
+        private const val KEY_SUBTITLES_SEEDED = "seeded_subtitles"
         private const val KEY_LIST = "installed_addons"
         private const val KEY_SEEDED = "seeded_defaults"
     }

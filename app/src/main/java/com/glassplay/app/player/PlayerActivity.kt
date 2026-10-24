@@ -104,11 +104,15 @@ import com.glassplay.app.ui.theme.glassDark
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import java.io.File
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 @OptIn(UnstableApi::class)
 class PlayerActivity : ComponentActivity() {
@@ -188,7 +192,10 @@ class PlayerActivity : ComponentActivity() {
         }
 
         lifecycleScope.launch {
-            val fromAddons = async { addonSubtitles() }
+            // Subtitles are found and downloaded while the stream gets ready. Whatever has
+            // arrived when the wait runs out is used; a slow subtitle never holds up the video.
+            val readySubtitles = ConcurrentHashMap<Int, SubtitleItem>()
+            val fromAddons = async { prepareSubtitles(readySubtitles) }
             val torrent = req.torrent
             val url = if (torrent == null) {
                 req.url
@@ -210,9 +217,9 @@ class PlayerActivity : ComponentActivity() {
                     return@launch
                 }
             }
-            val extra = withTimeoutOrNull(SUBTITLE_WAIT_MS) { fromAddons.await() } ?: emptyList()
+            withTimeoutOrNull(SUBTITLE_WAIT_MS) { fromAddons.await() }
             fromAddons.cancel()
-            subtitles = pickSubtitles(req.subtitles, extra)
+            subtitles = readySubtitles.entries.sortedBy { it.key }.map { it.value }
             playUrl = url
             starting.value = false
             exo.setMediaItem(buildMediaItem(), resumeAt)
@@ -233,6 +240,30 @@ class PlayerActivity : ComponentActivity() {
         throw e
     } catch (e: Exception) {
         emptyList()
+    }
+
+    /**
+     * Downloads the chosen subtitles to local files and keeps the ones that arrive intact.
+     * Loading them straight from the internet inside the player meant one broken file
+     * failed playback and every subtitle had to be dropped.
+     */
+    private suspend fun prepareSubtitles(into: MutableMap<Int, SubtitleItem>) = coroutineScope {
+        val dir = File(cacheDir, "subtitles").apply { mkdirs() }
+        // Clear out files from earlier days.
+        dir.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > 86_400_000L }?.forEach { it.delete() }
+        pickSubtitles(req.subtitles, addonSubtitles()).mapIndexed { i, s ->
+            launch {
+                val text = Graph.client.downloadText(s.url, SUBTITLE_FILE_MAX_BYTES) ?: return@launch
+                val ext = subtitleExtension(text) ?: return@launch
+                val file = File(dir, "${s.url.hashCode().toUInt()}.$ext")
+                try {
+                    file.writeText(text)
+                    into[i] = s.copy(url = Uri.fromFile(file).toString())
+                } catch (e: java.io.IOException) {
+                    // Out of space or similar: skip this one.
+                }
+            }
+        }.joinAll()
     }
 
     private fun buildMediaItem(): MediaItem {
@@ -314,9 +345,22 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private companion object {
-        const val SUBTITLE_WAIT_MS = 4_000L
-        const val MAX_SUBTITLES = 16
-        const val PER_LANGUAGE = 4
+        const val SUBTITLE_WAIT_MS = 8_000L
+        const val SUBTITLE_FILE_MAX_BYTES = 4L * 1024 * 1024
+
+        /** Works out the subtitle format from its contents; null if it isn't a subtitle at all. */
+        fun subtitleExtension(text: String): String? {
+            val head = text.trimStart('\uFEFF', ' ', '\n', '\r', '\t').take(400)
+            return when {
+                head.startsWith("WEBVTT") -> "vtt"
+                head.startsWith("[Script Info]", ignoreCase = true) -> "ass"
+                head.startsWith("<?xml") || head.startsWith("<tt") -> "ttml"
+                head.contains("-->") -> "srt"
+                else -> null
+            }
+        }
+        const val MAX_SUBTITLES = 30
+        const val PER_LANGUAGE = 3
 
         fun subtitleMimeType(url: String): String = when (url.substringBefore('?').substringAfterLast('.', "").lowercase()) {
             "vtt", "webvtt" -> MimeTypes.TEXT_VTT
@@ -342,21 +386,26 @@ class PlayerActivity : ComponentActivity() {
             return if (name.isNullOrBlank() || name.equals(code, ignoreCase = true)) lang else name
         }
 
-        /** Keeps the stream's own subtitles and a few per language the viewer is likely to want. */
+        /**
+         * Keeps the stream's own subtitles, a few choices in the languages the viewer most likely
+         * wants (the phone's language, English, and Hindi in India), and one of every other language.
+         */
         fun pickSubtitles(own: List<SubtitleItem>, fromAddons: List<SubtitleItem>): List<SubtitleItem> {
+            val locale = Locale.getDefault()
             val preferred = listOfNotNull(
                 try {
-                    Locale.getDefault().isO3Language
+                    locale.isO3Language
                 } catch (e: Exception) {
                     null
                 },
                 "eng",
+                "hin".takeIf { locale.country.equals("IN", ignoreCase = true) },
             ).distinct()
             val picked = own.toMutableList()
             for (lang in preferred) {
                 picked += fromAddons.filter { iso3(it.lang) == lang }.take(PER_LANGUAGE)
             }
-            if (picked.isEmpty()) picked += fromAddons.take(PER_LANGUAGE)
+            picked += fromAddons.filter { iso3(it.lang) !in preferred }.distinctBy { iso3(it.lang) }
             return picked.distinctBy { it.url }.take(MAX_SUBTITLES)
         }
     }

@@ -20,7 +20,7 @@ GlassPlay speaks the same add-on protocol as Stremio, so add-ons built for Strem
 - **Catalogs, metadata and search** from any add-on, for every content type (movies, series, TV channels, anime…).
 - **Streams:** direct links (`url`, with `proxyHeaders`), torrents (`infoHash` + `fileIdx` + `sources`, or magnet links), YouTube (`ytId`) and `externalUrl`.
 - **Torrents** are streamed inside the app, like Stremio's streaming server: the pieces the player needs are downloaded first, so playback starts before the download finishes and seeking works. Downloaded data is kept in the app's cache only while you watch.
-- **Subtitles** from subtitle add-ons (such as OpenSubtitles) and from streams that include their own. Pick them with the CC button in the player.
+- **Subtitles** from subtitle add-ons and from streams that include their own. OpenSubtitles v3, which Stremio also installs by default, is added automatically. Subtitles are downloaded before playback and only working files are offered, in your phone's language, English (and Hindi in India) plus one per other language. Pick them with the CC button in the player.
 
 ## Getting the APK
 

@@ -27,7 +27,11 @@ class AddonClient {
             val hit = cache[url]
             if (hit != null && System.currentTimeMillis() - hit.first < ttlMs) return@withContext hit.second
         }
-        val req = Request.Builder().url(url).header("Accept", "application/json").build()
+        val req = Request.Builder()
+            .url(url)
+            .header("Accept", "application/json")
+            .header("User-Agent", USER_AGENT)
+            .build()
         http.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) throw IOException("Server returned error ${resp.code}")
             val body = resp.body?.string() ?: throw IOException("Empty response")
@@ -40,7 +44,9 @@ class AddonClient {
         var u = raw.trim()
         if (u.startsWith("stremio://", ignoreCase = true)) u = "https://" + u.substring("stremio://".length)
         if (!u.startsWith("http://", true) && !u.startsWith("https://", true)) u = "https://$u"
-        if (!u.substringBefore('?').endsWith("manifest.json")) u = u.trimEnd('/') + "/manifest.json"
+        val path = u.substringBefore('?')
+        val query = u.substringAfter('?', "")
+        if (!path.endsWith("manifest.json")) u = path.trimEnd('/') + "/manifest.json" + if (query.isEmpty()) "" else "?$query"
         return u
     }
 
@@ -71,23 +77,33 @@ class AddonClient {
         extra: Map<String, String> = emptyMap(),
     ): List<MetaPreview> {
         val extraPath = if (extra.isEmpty()) "" else "/" + extra.entries.joinToString("&") { (k, v) -> "${enc(k)}=${enc(v)}" }
-        val url = "${addon.baseUrl}/catalog/${enc(cat.type)}/${enc(cat.id)}$extraPath.json"
+        val url = addon.resourceUrl("/catalog/${enc(cat.type)}/${enc(cat.id)}$extraPath.json")
         val json = JSONObject(getText(url))
         return json.optJSONArray("metas").mapObjects { parsePreview(it, cat.type) }
             .distinctBy { it.type + ":" + it.id }
     }
 
     suspend fun meta(addon: InstalledAddon, type: String, id: String): MetaDetail? {
-        val url = "${addon.baseUrl}/meta/${enc(type)}/${enc(id)}.json"
+        val url = addon.resourceUrl("/meta/${enc(type)}/${enc(id)}.json")
         val json = JSONObject(getText(url))
         return json.optJSONObject("meta")?.let { parseMeta(it, type) }
     }
 
     suspend fun streams(addon: InstalledAddon, type: String, id: String): List<StreamItem> {
-        val url = "${addon.baseUrl}/stream/${enc(type)}/${enc(id)}.json"
+        val url = addon.resourceUrl("/stream/${enc(type)}/${enc(id)}.json")
         val json = JSONObject(getText(url))
         return json.optJSONArray("streams").mapObjects { parseStream(it, addon.manifest.name) }
     }
 
+    suspend fun subtitles(addon: InstalledAddon, type: String, id: String): List<SubtitleItem> {
+        val url = addon.resourceUrl("/subtitles/${enc(type)}/${enc(id)}.json")
+        val json = JSONObject(getText(url))
+        return json.optJSONArray("subtitles").mapObjects { parseSubtitle(it, addon.manifest.name) }
+    }
+
     private fun enc(s: String): String = Uri.encode(s)
+
+    companion object {
+        const val USER_AGENT = "Mozilla/5.0 (Linux; Android) GlassPlay/1.0"
+    }
 }

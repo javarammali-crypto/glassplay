@@ -140,6 +140,21 @@ class AddonRepository(
         StreamResults(groups, providers.size, unsupported)
     }
 
+    /** Subtitles from every subtitle add-on; ones that fail are skipped. */
+    suspend fun loadSubtitles(type: String, videoId: String): List<SubtitleItem> = coroutineScope {
+        _installed.value.filter { it.supports("subtitles", type, videoId) }.map { a ->
+            async {
+                try {
+                    client.subtitles(a, type, videoId)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    emptyList()
+                }
+            }
+        }.awaitAll().flatten().distinctBy { it.url }
+    }
+
     companion object {
         const val CINEMETA_URL = "https://v3-cinemeta.strem.io/manifest.json"
         private const val KEY_LIST = "installed_addons"

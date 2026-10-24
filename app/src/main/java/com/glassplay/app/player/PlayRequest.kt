@@ -8,6 +8,8 @@ import android.os.Bundle
 import android.widget.Toast
 import com.glassplay.app.data.MetaDetail
 import com.glassplay.app.data.StreamItem
+import com.glassplay.app.data.SubtitleItem
+import com.glassplay.app.data.TorrentLink
 import com.glassplay.app.data.Video
 import com.glassplay.app.data.WatchEntry
 
@@ -24,7 +26,11 @@ data class PlayRequest(
     val season: Int?,
     val episode: Int?,
     val episodeTitle: String?,
+    /** Subtitles that came with the stream itself. */
+    val subtitles: List<SubtitleItem> = emptyList(),
 ) {
+    val torrent: TorrentLink? get() = TorrentLink.parse(url)
+
     val subtitle: String?
         get() {
             val label = if (season != null && episode != null) "S$season E$episode" else null
@@ -44,6 +50,9 @@ data class PlayRequest(
         putExtra("season", season ?: -1)
         putExtra("episode", episode ?: -1)
         putExtra("episodeTitle", episodeTitle)
+        putExtra("subUrls", subtitles.map { it.url }.toTypedArray())
+        putExtra("subLangs", subtitles.map { it.lang }.toTypedArray())
+        putExtra("subSources", subtitles.map { it.source }.toTypedArray())
     }
 
     companion object {
@@ -52,6 +61,12 @@ data class PlayRequest(
             val hb = intent.getBundleExtra("headers")
             val headers = hb?.keySet()?.associateWith { hb.getString(it).orEmpty() } ?: emptyMap()
             val metaId = intent.getStringExtra("metaId") ?: return null
+            val subUrls = intent.getStringArrayExtra("subUrls").orEmpty()
+            val subLangs = intent.getStringArrayExtra("subLangs").orEmpty()
+            val subSources = intent.getStringArrayExtra("subSources").orEmpty()
+            val subtitles = subUrls.mapIndexed { i, u ->
+                SubtitleItem(u, u, subLangs.getOrNull(i) ?: "und", subSources.getOrNull(i).orEmpty())
+            }
             return PlayRequest(
                 url = url,
                 headers = headers,
@@ -65,6 +80,7 @@ data class PlayRequest(
                 season = intent.getIntExtra("season", -1).takeIf { it >= 0 },
                 episode = intent.getIntExtra("episode", -1).takeIf { it >= 0 },
                 episodeTitle = intent.getStringExtra("episodeTitle"),
+                subtitles = subtitles,
             )
         }
 
@@ -78,9 +94,9 @@ data class PlayRequest(
     }
 }
 
-/** Opens a stream: direct links in the built-in player, YouTube and external links outside the app. */
+/** Opens a stream: direct links and torrents in the built-in player, YouTube and external links outside the app. */
 fun playStream(context: Context, meta: MetaDetail, video: Video?, stream: StreamItem) {
-    val url = stream.url
+    val url = stream.url ?: TorrentLink.fromStream(stream)?.toUri()
     when {
         url != null -> context.startActivity(
             PlayRequest(
@@ -96,6 +112,7 @@ fun playStream(context: Context, meta: MetaDetail, video: Video?, stream: Stream
                 season = video?.season,
                 episode = video?.episode,
                 episodeTitle = video?.title,
+                subtitles = stream.subtitles,
             ).toIntent(context)
         )
         stream.ytId != null -> openLink(context, "https://www.youtube.com/watch?v=${stream.ytId}")

@@ -1,7 +1,6 @@
 package com.glassplay.app.torrent
 
 import android.content.Context
-import android.os.Environment
 import com.glassplay.app.data.TorrentLink
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -47,7 +46,11 @@ data class TorrentDownloadProgress(val bytesDone: Long, val downloadRate: Int, v
  */
 class TorrentEngine(context: Context) {
     private val streamDir = File(context.cacheDir, "torrents")
-    val downloadDir = File(context.getExternalFilesDir(Environment.DIRECTORY_MOVIES) ?: context.filesDir, "GlassPlay")
+    /**
+     * Internal storage, like the streaming cache. Shared storage goes through Android's FUSE
+     * layer, where libtorrent's writes could kill the app with a native crash.
+     */
+    private val downloadDir = File(context.filesDir, "downloads")
     private val streams = ConcurrentHashMap<String, TorrentStream>()
     /** Torrents kept for the Downloads tab: info hash → file index. */
     private val downloads = ConcurrentHashMap<String, Int>()
@@ -71,7 +74,11 @@ class TorrentEngine(context: Context) {
             .activeDownloads(6)
             .activeLimit(12)
         val s = SessionManager(false)
-        s.start(SessionParams(settings))
+        // Plain file reads and writes instead of libtorrent's default memory-mapped files:
+        // a memory-mapped write that Android can't complete kills the whole app (SIGBUS).
+        val params = SessionParams(settings)
+        params.setPosixDiskIO()
+        s.start(params)
         session = s
         return s
     }

@@ -234,7 +234,8 @@ class DownloadRepository(
             request.addRequestHeader("User-Agent", AddonClient.PLAYER_USER_AGENT)
         }
         val id = system.enqueue(request)
-        item.copy(systemId = id, filePath = File(torrents.downloadDir, fileName).absolutePath, state = DownloadState.DOWNLOADING)
+        val dir = File(context.getExternalFilesDir(Environment.DIRECTORY_MOVIES), "GlassPlay")
+        item.copy(systemId = id, filePath = File(dir, fileName).absolutePath, state = DownloadState.DOWNLOADING)
     } catch (e: Exception) {
         item.copy(state = DownloadState.FAILED, error = e.message ?: "Couldn't start the download")
     }

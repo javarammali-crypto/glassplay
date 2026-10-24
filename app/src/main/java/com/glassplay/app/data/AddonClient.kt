@@ -40,6 +40,46 @@ class AddonClient {
         }
     }
 
+    /**
+     * Fetches a small text file such as a subtitle; null if it fails, is empty or is too large.
+     * Not cached: the caller saves it.
+     */
+    suspend fun downloadText(url: String, maxBytes: Long): String? = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder().url(url).header("User-Agent", USER_AGENT).build()
+            http.newCall(req).execute().use response@{ resp ->
+                val body = resp.body ?: return@response null
+                if (!resp.isSuccessful || body.contentLength() > maxBytes) return@response null
+                val out = java.io.ByteArrayOutputStream()
+                val buffer = ByteArray(16 * 1024)
+                body.byteStream().use { input ->
+                    while (true) {
+                        val n = input.read(buffer)
+                        if (n < 0) break
+                        out.write(buffer, 0, n)
+                        if (out.size() > maxBytes) return@response null
+                    }
+                }
+                val bytes = out.toByteArray()
+                if (bytes.isEmpty()) null else decodeText(bytes)
+            }
+        } catch (e: IOException) {
+            null
+        } catch (e: IllegalArgumentException) {
+            null
+        }
+    }
+
+    /** UTF-8 when it's valid UTF-8, otherwise Windows-1252, which most older subtitles use. */
+    private fun decodeText(bytes: ByteArray): String {
+        val decoder = Charsets.UTF_8.newDecoder()
+        return try {
+            decoder.decode(java.nio.ByteBuffer.wrap(bytes)).toString()
+        } catch (e: java.nio.charset.CharacterCodingException) {
+            String(bytes, charset("windows-1252"))
+        }
+    }
+
     fun normalizeUrl(raw: String): String {
         var u = raw.trim()
         if (u.startsWith("stremio://", ignoreCase = true)) u = "https://" + u.substring("stremio://".length)

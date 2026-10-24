@@ -3,6 +3,7 @@ package com.glassplay.app
 import android.content.Context
 import com.glassplay.app.data.AddonClient
 import com.glassplay.app.data.AddonRepository
+import com.glassplay.app.data.DownloadRepository
 import com.glassplay.app.data.RecentSearches
 import com.glassplay.app.data.WatchHistory
 import com.glassplay.app.torrent.TorrentEngine
@@ -24,6 +25,8 @@ object Graph {
         private set
     lateinit var torrents: TorrentEngine
         private set
+    lateinit var downloads: DownloadRepository
+        private set
 
     fun init(context: Context) {
         val prefs = context.getSharedPreferences("glassplay", Context.MODE_PRIVATE)
@@ -32,6 +35,7 @@ object Graph {
         history = WatchHistory(prefs)
         recents = RecentSearches(prefs)
         torrents = TorrentEngine(context.applicationContext)
+        downloads = DownloadRepository(context.applicationContext, prefs, torrents, appScope)
         addons.bootstrap()
     }
 }

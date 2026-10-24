@@ -6,6 +6,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
+import com.glassplay.app.data.DownloadItem
+import com.glassplay.app.data.DownloadState
 import com.glassplay.app.data.MetaDetail
 import com.glassplay.app.data.StreamItem
 import com.glassplay.app.data.SubtitleItem
@@ -118,6 +120,36 @@ fun playStream(context: Context, meta: MetaDetail, video: Video?, stream: Stream
         stream.ytId != null -> openLink(context, "https://www.youtube.com/watch?v=${stream.ytId}")
         stream.externalUrl != null -> openLink(context, stream.externalUrl)
     }
+}
+
+/**
+ * Plays a download: the saved file once it's finished, or a torrent straight from the
+ * download in progress (pieces it already has play right away).
+ */
+fun playDownload(context: Context, item: DownloadItem): Boolean {
+    val file = item.file
+    val url = when {
+        item.state == DownloadState.DONE && file != null && file.exists() -> Uri.fromFile(file).toString()
+        item.isTorrent -> item.source
+        else -> return false
+    }
+    context.startActivity(
+        PlayRequest(
+            url = url,
+            headers = emptyMap(),
+            streamTitle = item.streamTitle,
+            metaId = item.metaId,
+            type = item.type,
+            name = item.name,
+            poster = item.poster,
+            background = item.background,
+            videoId = item.videoId,
+            season = item.season,
+            episode = item.episode,
+            episodeTitle = item.episodeTitle,
+        ).toIntent(context)
+    )
+    return true
 }
 
 fun resumeEntry(context: Context, entry: WatchEntry): Boolean {

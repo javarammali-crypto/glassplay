@@ -16,6 +16,8 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
         )
         super.onCreate(savedInstanceState)
+        // Unfinished torrent downloads continue from where they stopped.
+        if (savedInstanceState == null) Graph.downloads.resumeAll()
         setContent {
             GlassTheme {
                 AppRoot()

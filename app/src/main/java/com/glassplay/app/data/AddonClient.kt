@@ -33,7 +33,7 @@ class AddonClient {
             .header("User-Agent", USER_AGENT)
             .build()
         http.newCall(req).execute().use { resp ->
-            if (!resp.isSuccessful) throw IOException("Server returned error ${resp.code}")
+            if (!resp.isSuccessful) throw IOException(httpErrorMessage(resp.code))
             val body = resp.body?.string() ?: throw IOException("Empty response")
             cache[url] = System.currentTimeMillis() to body
             body
@@ -104,6 +104,21 @@ class AddonClient {
     private fun enc(s: String): String = Uri.encode(s)
 
     companion object {
-        const val USER_AGENT = "Mozilla/5.0 (Linux; Android) GlassPlay/1.0"
+        /**
+         * Add-on servers often sit behind bot protection that blocks apps claiming to be a
+         * browser, so add-on requests identify honestly as an app.
+         */
+        const val USER_AGENT = "GlassPlay/1.1 (Android; Stremio add-on client)"
+
+        /** Video hosts, on the other hand, sometimes only serve browsers. */
+        const val PLAYER_USER_AGENT = "Mozilla/5.0 (Linux; Android) GlassPlay/1.1"
+
+        fun httpErrorMessage(code: Int): String = when (code) {
+            401, 403 -> "The server refused the request (error $code). The add-on may need to be configured, or it blocks this app."
+            404 -> "Nothing found (error 404)."
+            429 -> "Usage limit reached (error 429). Try again later."
+            in 500..599 -> "The server is having problems (error $code)."
+            else -> "The server returned error $code."
+        }
     }
 }

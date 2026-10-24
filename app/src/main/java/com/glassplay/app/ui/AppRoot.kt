@@ -14,15 +14,31 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -30,14 +46,21 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.glassplay.app.CrashLog
 import com.glassplay.app.ui.addons.AddonsScreen
+import com.glassplay.app.ui.components.GlassButton
+import com.glassplay.app.ui.components.GlassDialog
 import com.glassplay.app.ui.components.GlassTabBar
 import com.glassplay.app.ui.components.TabItem
 import com.glassplay.app.ui.detail.DetailScreen
 import com.glassplay.app.ui.discover.DiscoverScreen
+import com.glassplay.app.ui.downloads.DownloadsScreen
 import com.glassplay.app.ui.home.HomeScreen
 import com.glassplay.app.ui.search.SearchScreen
 import com.glassplay.app.ui.theme.AuroraBackground
+import com.glassplay.app.ui.theme.GlassType
+import com.glassplay.app.ui.theme.TextSecondary
+import com.glassplay.app.ui.theme.TextTertiary
 
 private val IosEase = CubicBezierEasing(0.2f, 0.9f, 0.1f, 1f)
 
@@ -52,6 +75,7 @@ fun AppRoot() {
             TabItem("home", "Home", Icons.Rounded.Home),
             TabItem("discover", "Discover", Icons.Rounded.Explore),
             TabItem("search", "Search", Icons.Rounded.Search),
+            TabItem("downloads", "Downloads", Icons.Rounded.Download),
             TabItem("addons", "Add-ons", Icons.Rounded.Extension),
         )
     }
@@ -85,6 +109,7 @@ fun AppRoot() {
             }
             composable("discover") { DiscoverScreen(onOpen = openDetail) }
             composable("search") { SearchScreen(onOpen = openDetail) }
+            composable("downloads") { DownloadsScreen() }
             composable("addons") { AddonsScreen() }
             composable(
                 route = "detail/{type}/{id}",
@@ -118,6 +143,49 @@ fun AppRoot() {
             exit = slideOutVertically(tween(260)) { it } + fadeOut(tween(200)),
         ) {
             GlassTabBar(tabs, tabIndex.coerceAtLeast(0)) { i -> selectTab(tabs[i].route) }
+        }
+    }
+
+    CrashReportDialog()
+}
+
+/** After a crash, shows what went wrong so it can be copied and reported. */
+@Composable
+private fun CrashReportDialog() {
+    var report by remember { mutableStateOf(CrashLog.pending()) }
+    val clipboard = LocalClipboardManager.current
+    val text = report ?: return
+    val dismiss = {
+        CrashLog.clear()
+        report = null
+    }
+    GlassDialog(onDismiss = dismiss) {
+        Text("GlassPlay closed unexpectedly", style = GlassType.title3, color = Color.White)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Sorry about that. Copy the details below and share them so the problem can be fixed.",
+            style = GlassType.subhead,
+            color = TextSecondary,
+        )
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text,
+            fontSize = 10.sp,
+            color = TextTertiary,
+            modifier = Modifier.heightIn(max = 180.dp).verticalScroll(rememberScrollState()),
+        )
+        Spacer(Modifier.height(16.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            GlassButton("Close", onClick = dismiss, modifier = Modifier.weight(1f))
+            GlassButton(
+                "Copy details",
+                onClick = {
+                    clipboard.setText(AnnotatedString(text))
+                    dismiss()
+                },
+                primary = true,
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }

@@ -8,7 +8,8 @@ An Android media center with a glass-style interface and a plug-in system compat
 - **Discover:** Movies and TV Shows tabs, catalog and genre filters, infinite scrolling.
 - **Search** across every installed add-on that supports it, with recent searches.
 - **Details:** artwork, rating, cast, trailer, and a season and episode picker that marks watched episodes.
-- **Player:** resumes exactly where you stopped. Supports direct video links, HLS, DASH and torrents, with subtitles from your add-ons and software decoding for AC3/DTS/TrueHD audio. Streams can also be opened in another player app.
+- **Downloads:** save torrent or direct-link streams to the device and watch them offline. Torrent downloads keep going in the background, and a torrent can be played while it's still downloading.
+- **Player:** resumes exactly where you stopped. Fit, zoom or stretch the video with the size button or by pinching. A loading screen with the title's artwork shows peers and speed while a torrent starts. Supports direct video links, HLS, DASH and torrents, with subtitles from your add-ons and software decoding for AC3/DTS/TrueHD audio. Streams can also be opened in another player app.
 - **Add-ons:** install any Stremio add-on by pasting its manifest link (including configured links and `stremio://` links), reorder by priority, or remove.
 
 ## Stremio add-on support

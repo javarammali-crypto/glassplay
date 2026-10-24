@@ -2,33 +2,55 @@ package com.glassplay.app.player
 
 import android.net.Uri
 import android.os.Bundle
+import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.AspectRatio
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.FitScreen
+import androidx.compose.material.icons.rounded.People
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.ZoomOutMap
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,7 +58,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -55,14 +84,18 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import coil3.compose.AsyncImage
 import com.glassplay.app.Graph
 import com.glassplay.app.data.AddonClient
 import com.glassplay.app.data.SubtitleItem
 import com.glassplay.app.data.WatchEntry
+import com.glassplay.app.torrent.TorrentStatus
 import com.glassplay.app.ui.components.GlassButton
 import com.glassplay.app.ui.components.GlassIconButton
 import com.glassplay.app.ui.components.Spinner
+import com.glassplay.app.ui.downloads.formatBytes
 import com.glassplay.app.ui.theme.GlassTheme
 import com.glassplay.app.ui.theme.GlassType
 import com.glassplay.app.ui.theme.TextSecondary
@@ -109,7 +142,7 @@ class PlayerActivity : ComponentActivity() {
 
         val httpFactory = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
-            .setUserAgent(AddonClient.USER_AGENT)
+            .setUserAgent(AddonClient.PLAYER_USER_AGENT)
             .setConnectTimeoutMs(20_000)
             // Torrent reads wait for pieces to arrive from peers, so give them much longer.
             .setReadTimeoutMs(if (req.torrent != null) 120_000 else 30_000)
@@ -328,6 +361,13 @@ class PlayerActivity : ComponentActivity() {
     }
 }
 
+/** How the video fills the screen; pinch or the button in the top bar switches between them. */
+private enum class VideoFit(val label: String, val mode: Int, val icon: ImageVector) {
+    FIT("Fit to screen", AspectRatioFrameLayout.RESIZE_MODE_FIT, Icons.Rounded.FitScreen),
+    ZOOM("Zoom to fill", AspectRatioFrameLayout.RESIZE_MODE_ZOOM, Icons.Rounded.ZoomOutMap),
+    STRETCH("Stretch", AspectRatioFrameLayout.RESIZE_MODE_FILL, Icons.Rounded.AspectRatio),
+}
+
 @OptIn(UnstableApi::class)
 @Composable
 private fun PlayerScreen(
@@ -340,16 +380,31 @@ private fun PlayerScreen(
 ) {
     var controlsVisible by remember { mutableStateOf(true) }
     var buffering by remember { mutableStateOf(true) }
+    var started by remember { mutableStateOf(false) }
+    var fit by remember { mutableStateOf(VideoFit.FIT) }
+    var fitHint by remember { mutableStateOf<String?>(null) }
     val torrentStatus by Graph.torrents.status.collectAsState()
+    val status = req.torrent?.let { torrentStatus[it.infoHash] }
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 buffering = playbackState == Player.STATE_BUFFERING || playbackState == Player.STATE_IDLE
+                if (playbackState == Player.STATE_READY) started = true
             }
         }
         player.addListener(listener)
         onDispose { player.removeListener(listener) }
+    }
+    LaunchedEffect(fitHint) {
+        if (fitHint != null) {
+            delay(1_200)
+            fitHint = null
+        }
+    }
+    val setFit: (VideoFit) -> Unit = {
+        fit = it
+        fitHint = it.label
     }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
@@ -369,12 +424,44 @@ private fun PlayerScreen(
                             controlsVisible = visibility == View.VISIBLE
                         }
                     })
+                    // Pinch out to zoom the video to fill the screen, pinch in to fit it again.
+                    var pinched = false
+                    var scale = 1f
+                    val detector = ScaleGestureDetector(ctx, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                        override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
+                            pinched = true
+                            scale = 1f
+                            return true
+                        }
+
+                        override fun onScale(detector: ScaleGestureDetector): Boolean {
+                            scale *= detector.scaleFactor
+                            return true
+                        }
+
+                        override fun onScaleEnd(detector: ScaleGestureDetector) {
+                            if (scale > 1.12f) setFit(VideoFit.ZOOM) else if (scale < 0.9f) setFit(VideoFit.FIT)
+                        }
+                    })
+                    setOnTouchListener { _, event ->
+                        detector.onTouchEvent(event)
+                        when {
+                            event.actionMasked == MotionEvent.ACTION_DOWN -> {
+                                pinched = false
+                                false
+                            }
+                            // Don't let the end of a pinch count as a tap that toggles the controls.
+                            pinched || event.pointerCount > 1 -> true
+                            else -> false
+                        }
+                    }
                 }
             },
+            update = { it.resizeMode = fit.mode },
         )
 
         AnimatedVisibility(
-            visible = controlsVisible,
+            visible = controlsVisible && started,
             modifier = Modifier.align(Alignment.TopStart),
             enter = fadeIn() + slideInVertically { -it / 2 },
             exit = fadeOut() + slideOutVertically { -it / 2 },
@@ -387,6 +474,7 @@ private fun PlayerScreen(
                 Spacer(Modifier.width(12.dp))
                 Column(
                     Modifier
+                        .weight(1f, fill = false)
                         .widthIn(max = 520.dp)
                         .glassDark(RoundedCornerShape(16.dp))
                         .padding(horizontal = 14.dp, vertical = 8.dp)
@@ -396,11 +484,29 @@ private fun PlayerScreen(
                         Text(it, style = GlassType.footnote, color = TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
+                Spacer(Modifier.weight(1f))
+                GlassIconButton(fit.icon, "Video size: ${fit.label}", {
+                    setFit(VideoFit.entries[(fit.ordinal + 1) % VideoFit.entries.size])
+                })
             }
         }
 
-        val status = req.torrent?.let { torrentStatus[it.infoHash] }
-        if (error == null && (starting || (isTorrent && buffering))) {
+        AnimatedVisibility(
+            visible = fitHint != null,
+            modifier = Modifier.align(Alignment.Center),
+            enter = fadeIn(),
+            exit = fadeOut(),
+        ) {
+            Text(
+                fitHint.orEmpty(),
+                style = GlassType.headline,
+                color = Color.White,
+                modifier = Modifier.glassDark(CircleShape).padding(horizontal = 20.dp, vertical = 10.dp),
+            )
+        }
+
+        // Rebuffering a torrent mid-film: show how the download is doing.
+        if (error == null && started && isTorrent && buffering) {
             Column(
                 Modifier
                     .align(Alignment.Center)
@@ -411,13 +517,7 @@ private fun PlayerScreen(
             ) {
                 Spinner()
                 Spacer(Modifier.height(10.dp))
-                val headline = when {
-                    !isTorrent -> "Loading…"
-                    status == null || status.peers == 0 -> "Connecting to peers…"
-                    !status.hasMetadata -> "Getting torrent info…"
-                    else -> "Buffering…"
-                }
-                Text(headline, style = GlassType.headline, color = Color.White)
+                Text("Buffering…", style = GlassType.headline, color = Color.White)
                 if (status != null && status.peers > 0) {
                     Spacer(Modifier.height(4.dp))
                     Text(
@@ -427,6 +527,14 @@ private fun PlayerScreen(
                     )
                 }
             }
+        }
+
+        AnimatedVisibility(
+            visible = error == null && (starting || !started),
+            enter = fadeIn(),
+            exit = fadeOut(tween(600)),
+        ) {
+            LoadingScreen(req, isTorrent, status, onBack)
         }
 
         error?.let { msg ->
@@ -445,6 +553,142 @@ private fun PlayerScreen(
                 GlassButton("Choose another stream", onClick = onBack, primary = true)
             }
         }
+    }
+}
+
+/** Full-screen loading state with the title's artwork while the stream gets ready. */
+@Composable
+private fun LoadingScreen(req: PlayRequest, isTorrent: Boolean, status: TorrentStatus?, onBack: () -> Unit) {
+    val transition = rememberInfiniteTransition(label = "loading")
+    val zoom by transition.animateFloat(
+        1.04f, 1.16f,
+        infiniteRepeatable(tween(14_000, easing = LinearEasing), RepeatMode.Reverse),
+        label = "zoom",
+    )
+    val sweep by transition.animateFloat(
+        0f, 1f,
+        infiniteRepeatable(tween(1_400, easing = FastOutSlowInEasing)),
+        label = "sweep",
+    )
+    val stage = when {
+        !isTorrent -> "Loading your stream…"
+        status == null || status.peers == 0 -> "Connecting to peers…"
+        !status.hasMetadata -> "Fetching torrent details…"
+        else -> "Buffering the first minutes…"
+    }
+
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        AsyncImage(
+            model = req.background ?: req.poster,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { scaleX = zoom; scaleY = zoom }
+                .blur(8.dp),
+        )
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.horizontalGradient(
+                        0f to Color.Black.copy(alpha = 0.92f),
+                        0.6f to Color.Black.copy(alpha = 0.6f),
+                        1f to Color.Black.copy(alpha = 0.3f),
+                    )
+                )
+        )
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Brush.verticalGradient(0.55f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.8f)))
+        )
+
+        GlassIconButton(
+            Icons.AutoMirrored.Rounded.ArrowBack,
+            "Back",
+            onBack,
+            modifier = Modifier.align(Alignment.TopStart).padding(horizontal = 24.dp, vertical = 16.dp),
+        )
+
+        Row(
+            Modifier
+                .align(Alignment.CenterStart)
+                .fillMaxWidth()
+                .padding(horizontal = 48.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (req.poster != null) {
+                AsyncImage(
+                    model = req.poster,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .width(124.dp)
+                        .aspectRatio(2f / 3f)
+                        .clip(RoundedCornerShape(16.dp))
+                        .border(0.5.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(16.dp)),
+                )
+                Spacer(Modifier.width(28.dp))
+            }
+            Column(Modifier.widthIn(max = 540.dp)) {
+                Text("NOW PLAYING", style = GlassType.caption, color = TextSecondary)
+                Spacer(Modifier.height(4.dp))
+                Text(req.name, style = GlassType.title1, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                req.subtitle?.let {
+                    Text(it, style = GlassType.headline, color = TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                req.streamTitle?.let {
+                    Spacer(Modifier.height(2.dp))
+                    Text(it.replace('\n', ' '), style = GlassType.footnote, color = TextTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Spacer(Modifier.height(22.dp))
+                // An indeterminate bar: a highlight sweeping across a faint track.
+                Box(
+                    Modifier
+                        .widthIn(max = 360.dp)
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.16f))
+                        .drawWithContent {
+                            val w = size.width * 0.35f
+                            val x = (size.width + w) * sweep - w
+                            drawRect(
+                                Brush.horizontalGradient(
+                                    listOf(Color.Transparent, Color.White, Color.Transparent),
+                                    startX = x,
+                                    endX = x + w,
+                                ),
+                            )
+                        }
+                )
+                Spacer(Modifier.height(12.dp))
+                Text(stage, style = GlassType.callout, color = Color.White)
+                if (isTorrent && status != null && status.peers > 0) {
+                    Spacer(Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        StatPill(Icons.Rounded.People, "${status.peers} peer${if (status.peers == 1) "" else "s"}")
+                        StatPill(Icons.Rounded.Speed, formatRate(status.downloadRate))
+                        if (status.downloaded > 0) StatPill(Icons.Rounded.Download, formatBytes(status.downloaded))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatPill(icon: ImageVector, text: String) {
+    Row(
+        Modifier
+            .glassDark(CircleShape)
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, tint = Color.White, modifier = Modifier.size(15.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(text, style = GlassType.footnote, color = Color.White)
     }
 }
 

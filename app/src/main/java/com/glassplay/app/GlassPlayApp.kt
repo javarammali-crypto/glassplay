@@ -9,6 +9,7 @@ import coil3.request.crossfade
 class GlassPlayApp : Application(), SingletonImageLoader.Factory {
     override fun onCreate() {
         super.onCreate()
+        CrashLog.install(this)
         Graph.init(this)
     }
 

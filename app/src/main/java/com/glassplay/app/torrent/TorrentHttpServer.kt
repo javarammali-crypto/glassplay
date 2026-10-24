@@ -1,6 +1,7 @@
 package com.glassplay.app.torrent
 
 import android.net.Uri
+import android.util.Log
 import java.io.BufferedOutputStream
 import java.io.IOException
 import java.io.InputStream
@@ -25,7 +26,13 @@ class TorrentHttpServer(private val lookup: (String) -> TorrentStream?) {
                 } catch (e: IOException) {
                     break
                 }
-                workers.execute { client.use { handle(it) } }
+                workers.execute {
+                    try {
+                        client.use { handle(it) }
+                    } catch (e: Exception) {
+                        // Closing a dead socket can fail too; nothing to do.
+                    }
+                }
             }
         }
     }
@@ -119,6 +126,9 @@ class TorrentHttpServer(private val lookup: (String) -> TorrentStream?) {
             // The player closed the connection, usually because it seeked elsewhere.
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
+        } catch (e: Exception) {
+            // Never let one bad request take the whole app down.
+            Log.w("TorrentHttpServer", "Request failed", e)
         }
     }
 

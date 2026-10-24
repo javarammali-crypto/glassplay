@@ -1,14 +1,20 @@
 package com.glassplay.app.ui.discover
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -16,6 +22,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -30,14 +37,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.glassplay.app.Graph
 import com.glassplay.app.data.CatalogDef
+import com.glassplay.app.data.FRANCHISES
 import com.glassplay.app.data.InstalledAddon
 import com.glassplay.app.data.MetaPreview
+import com.glassplay.app.data.StreamingServices
 import com.glassplay.app.data.TYPE_MOVIE
 import com.glassplay.app.data.TYPE_SERIES
 import com.glassplay.app.ui.components.GlassButton
@@ -46,9 +56,11 @@ import com.glassplay.app.ui.components.GlassSegmented
 import com.glassplay.app.ui.components.LargeTitle
 import com.glassplay.app.ui.components.PosterCard
 import com.glassplay.app.ui.components.Spinner
+import com.glassplay.app.ui.components.bounceClick
 import com.glassplay.app.ui.theme.GlassType
 import com.glassplay.app.ui.theme.TextSecondary
 import com.glassplay.app.ui.theme.TextTertiary
+import com.glassplay.app.ui.theme.glass
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -100,17 +112,25 @@ class DiscoverViewModel : ViewModel() {
 }
 
 @Composable
-fun DiscoverScreen(onOpen: (String, String) -> Unit) {
+fun DiscoverScreen(onOpen: (String, String) -> Unit, onOpenFranchise: (String) -> Unit) {
     val vm: DiscoverViewModel = viewModel()
     val addons by Graph.addons.installed.collectAsState()
     val scope = rememberCoroutineScope()
     val gridState = rememberLazyGridState()
 
+    val showFranchises = vm.typeIndex == 2
     val type = if (vm.typeIndex == 0) TYPE_MOVIE else TYPE_SERIES
-    val catalogs = remember(addons, type) {
-        addons.flatMap { a -> a.manifest.catalogs.filter { it.type == type && it.isBrowsable }.map { a to it } }
+    // Add-on catalogs first, then the built-in streaming services (which replace the
+    // Streaming Catalogs add-on's own entries if it's installed).
+    val addonCatalogs = remember(addons, type) {
+        addons.filter { it.manifest.id != StreamingServices.ADDON_ID }
+            .flatMap { a -> a.manifest.catalogs.filter { it.type == type && it.isBrowsable }.map { a to it } }
     }
-    val multipleAddons = remember(catalogs) { catalogs.map { it.first.transportUrl }.distinct().size > 1 }
+    val services = remember(type) { StreamingServices.forType(type) }
+    val catalogs = remember(addonCatalogs, services, showFranchises) {
+        if (showFranchises) emptyList() else addonCatalogs + services.map { StreamingServices.addon to it.second }
+    }
+    val multipleAddons = remember(addonCatalogs) { addonCatalogs.map { it.first.transportUrl }.distinct().size > 1 }
 
     val catIdx = (vm.catalogIndex[vm.typeIndex] ?: 0).coerceIn(0, (catalogs.size - 1).coerceAtLeast(0))
     val current = catalogs.getOrNull(catIdx)
@@ -150,15 +170,15 @@ fun DiscoverScreen(onOpen: (String, String) -> Unit) {
             Column {
                 LargeTitle("Discover", horizontalPadding = 4.dp)
                 GlassSegmented(
-                    options = listOf("Movies", "TV Shows"),
+                    options = listOf("Movies", "TV Shows", "Franchises"),
                     selected = vm.typeIndex,
                     onSelect = { vm.typeIndex = it; scrollTop() },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
                 )
-                if (catalogs.isNotEmpty()) {
+                if (!showFranchises && addonCatalogs.isNotEmpty()) {
                     Spacer(Modifier.height(14.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(horizontal = 4.dp)) {
-                        itemsIndexed(catalogs, key = { i, it -> "$i-${it.first.transportUrl}-${it.second.id}" }) { i, (a, c) ->
+                        itemsIndexed(addonCatalogs, key = { i, it -> "$i-${it.first.transportUrl}-${it.second.id}" }) { i, (a, c) ->
                             GlassChip(
                                 text = if (multipleAddons) "${c.name} · ${a.manifest.name}" else c.name,
                                 selected = i == catIdx,
@@ -169,6 +189,38 @@ fun DiscoverScreen(onOpen: (String, String) -> Unit) {
                             )
                         }
                     }
+                }
+                if (!showFranchises && services.isNotEmpty()) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "STREAMING SERVICES",
+                        style = GlassType.caption,
+                        color = TextTertiary,
+                        modifier = Modifier.padding(start = 8.dp, bottom = 6.dp),
+                    )
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(horizontal = 4.dp)) {
+                        itemsIndexed(services, key = { _, it -> "svc-${it.first.id}" }) { j, (service, _) ->
+                            val index = addonCatalogs.size + j
+                            ServiceChip(
+                                name = service.name,
+                                color = Color(service.color),
+                                selected = index == catIdx,
+                                onClick = {
+                                    vm.catalogIndex[vm.typeIndex] = index
+                                    scrollTop()
+                                },
+                            )
+                        }
+                    }
+                }
+                if (showFranchises) {
+                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        "Every movie of the biggest franchises, in release order.",
+                        style = GlassType.subhead,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                    )
                 }
                 if (genres.isNotEmpty()) {
                     Spacer(Modifier.height(10.dp))
@@ -190,7 +242,11 @@ fun DiscoverScreen(onOpen: (String, String) -> Unit) {
             }
         }
 
-        if (current == null) {
+        if (showFranchises) {
+            items(FRANCHISES, key = { "franchise-${it.id}" }, span = { GridItemSpan(if (maxLineSpan >= 6) maxLineSpan / 2 else maxLineSpan) }) { f ->
+                FranchiseCard(f, onClick = { onOpenFranchise(f.id) })
+            }
+        } else if (current == null) {
             item(key = "none", span = { GridItemSpan(maxLineSpan) }) {
                 Column(Modifier.fillMaxWidth().padding(vertical = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Nothing to browse", style = GlassType.title3, color = Color.White)
@@ -231,5 +287,24 @@ fun DiscoverScreen(onOpen: (String, String) -> Unit) {
                 }
             }
         }
+    }
+}
+
+/** A catalog chip for a streaming service, with a dot in the service's colour. */
+@Composable
+private fun ServiceChip(name: String, color: Color, selected: Boolean, onClick: () -> Unit) {
+    val bgAlpha by animateFloatAsState(if (selected) 1f else 0f, tween(220), label = "svc")
+    Row(
+        Modifier
+            .bounceClick(0.92f, onClick = onClick)
+            .height(36.dp)
+            .glass(CircleShape, strength = 0.9f)
+            .background(Color.White.copy(alpha = 0.92f * bgAlpha), CircleShape)
+            .padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(10.dp).clip(CircleShape).background(color))
+        Spacer(Modifier.width(8.dp))
+        Text(name, style = GlassType.footnote, color = if (selected) Color.Black else Color.White, maxLines = 1)
     }
 }

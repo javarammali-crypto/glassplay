@@ -55,6 +55,7 @@ import com.glassplay.app.ui.components.GlassTabBar
 import com.glassplay.app.ui.components.TabItem
 import com.glassplay.app.ui.detail.DetailScreen
 import com.glassplay.app.ui.discover.DiscoverScreen
+import com.glassplay.app.ui.discover.FranchiseScreen
 import com.glassplay.app.ui.downloads.DownloadsScreen
 import com.glassplay.app.ui.home.HomeScreen
 import com.glassplay.app.ui.search.SearchScreen
@@ -108,7 +109,29 @@ fun AppRoot() {
             composable("home") {
                 HomeScreen(onOpen = openDetail, onGoAddons = { selectTab("addons") })
             }
-            composable("discover") { DiscoverScreen(onOpen = openDetail) }
+            composable("discover") {
+                DiscoverScreen(onOpen = openDetail, onOpenFranchise = { nav.navigate("franchise/${Uri.encode(it)}") })
+            }
+            composable(
+                route = "franchise/{id}",
+                arguments = listOf(navArgument("id") { type = NavType.StringType }),
+                enterTransition = {
+                    slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(420, easing = IosEase)) +
+                        fadeIn(tween(250))
+                },
+                exitTransition = { fadeOut(tween(200)) + scaleOut(tween(300), targetScale = 0.96f) },
+                popEnterTransition = { fadeIn(tween(250)) + scaleIn(tween(300), initialScale = 0.96f) },
+                popExitTransition = {
+                    slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(340, easing = IosEase)) +
+                        fadeOut(tween(300))
+                },
+            ) { entry ->
+                FranchiseScreen(
+                    id = entry.arguments?.getString("id").orEmpty(),
+                    onBack = { nav.popBackStack() },
+                    onOpen = openDetail,
+                )
+            }
             composable("search") { SearchScreen(onOpen = openDetail) }
             composable("downloads") { DownloadsScreen() }
             composable("addons") { AddonsScreen() }

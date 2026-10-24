@@ -117,8 +117,12 @@ fun StreamSheet(target: StreamTarget, onDismiss: () -> Unit) {
                 )
                 r.playableCount == 0 -> Message(
                     "No streams found",
-                    r.groups.firstNotNullOfOrNull { it.error }?.let { "An add-on had a problem: $it" }
-                        ?: "Your add-ons didn't return anything for this title.",
+                    r.groups.joinToString("\n\n") { g ->
+                        when {
+                            g.error != null -> "${g.addonName}: ${g.error}"
+                            else -> "${g.addonName}: no streams. Some add-ons only return streams once you configure them, for example with a debrid account."
+                        }
+                    }.ifEmpty { "Your add-ons didn't return anything for this title." },
                 )
                 else -> LazyColumn(Modifier.heightIn(max = 560.dp)) {
                     r.groups.filter { it.streams.isNotEmpty() }.forEachIndexed { gi, group ->

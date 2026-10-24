@@ -109,7 +109,7 @@ class PlayerActivity : ComponentActivity() {
 
         val httpFactory = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
-            .setUserAgent(AddonClient.USER_AGENT)
+            .setUserAgent(AddonClient.PLAYER_USER_AGENT)
             .setConnectTimeoutMs(20_000)
             // Torrent reads wait for pieces to arrive from peers, so give them much longer.
             .setReadTimeoutMs(if (req.torrent != null) 120_000 else 30_000)

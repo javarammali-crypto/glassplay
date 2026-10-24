@@ -99,6 +99,7 @@ import com.glassplay.app.ui.downloads.formatBytes
 import com.glassplay.app.ui.theme.GlassTheme
 import com.glassplay.app.ui.theme.GlassType
 import com.glassplay.app.ui.theme.TextSecondary
+import com.glassplay.app.ui.theme.TextTertiary
 import com.glassplay.app.ui.theme.glassDark
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job

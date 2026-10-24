@@ -40,9 +40,14 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.glassplay.app.Graph
@@ -181,7 +186,7 @@ fun StreamSheet(target: StreamTarget, onDismiss: () -> Unit) {
                         }
                     }.ifEmpty { "Your add-ons didn't return anything for this title." },
                 )
-                else -> LazyColumn(Modifier.heightIn(max = 560.dp)) {
+                else -> LazyColumn(Modifier.heightIn(max = 560.dp).nestedScroll(KeepScrollInList)) {
                     r.groups.filter { it.streams.isNotEmpty() }.forEachIndexed { gi, group ->
                         item(key = "h-$gi") {
                             Text(
@@ -282,4 +287,14 @@ private fun StreamRow(stream: StreamItem, onPlay: () -> Unit, onDownload: (() ->
             }
         }
     }
+}
+
+/**
+ * Stops a scroll that reaches the top of the stream list from carrying on into the sheet
+ * and dragging it closed. The sheet still closes from its handle or by tapping outside.
+ */
+private object KeepScrollInList : NestedScrollConnection {
+    override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset = available
+
+    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity = available
 }

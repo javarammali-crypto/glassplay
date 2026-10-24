@@ -33,6 +33,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -152,7 +153,8 @@ fun AppRoot() {
 /** After a crash, shows what went wrong so it can be copied and reported. */
 @Composable
 private fun CrashReportDialog() {
-    var report by remember { mutableStateOf(CrashLog.pending()) }
+    val context = LocalContext.current
+    var report by remember { mutableStateOf(CrashLog.pending(context)) }
     val clipboard = LocalClipboardManager.current
     val text = report ?: return
     val dismiss = {

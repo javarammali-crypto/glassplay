@@ -12,8 +12,13 @@ android {
         applicationId = "com.glassplay.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.3"
+        // GitHub builds stamp their release number (v1, v2, …) into the app so it can tell when
+        // a newer release is out. versionCode follows the build run, so it only ever goes up.
+        val release = System.getenv("APP_VERSION")?.toIntOrNull() ?: 0
+        versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 4
+        versionName = if (release > 0) "v$release" else "dev"
+        buildConfigField("int", "RELEASE_NUMBER", release.toString())
+        buildConfigField("String", "UPDATE_REPO", "\"javarammali-crypto/glassplay\"")
     }
 
     // A fixed key so every new build installs as an update over the previous one.
@@ -45,6 +50,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     lint {
         checkReleaseBuilds = false

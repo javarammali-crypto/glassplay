@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+env:
+  # Releases are numbered v1, v2, …; build run 7 was released as v1.
+  VERSION_OFFSET: 6
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -23,21 +27,26 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
+      - name: Work out the version
+        run: echo "APP_VERSION=$(( ${{ github.run_number }} - VERSION_OFFSET ))" >> "$GITHUB_ENV"
+
       - name: Build release APK
         run: gradle assembleRelease --stacktrace --no-daemon
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/release/app-release.apk GlassPlay-${{ github.run_number }}.apk
+        run: cp app/build/outputs/apk/release/app-release.apk GlassPlay-v${APP_VERSION}.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: GlassPlay-apk
-          path: GlassPlay-${{ github.run_number }}.apk
+          path: GlassPlay-v${{ env.APP_VERSION }}.apk
 
+      # The app checks the latest release and offers it as an update; the notes below are
+      # shown in its update pop-up.
       - name: Publish as a release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: build-${{ github.run_number }}
-          name: GlassPlay build ${{ github.run_number }}
-          body: Install the APK below on your Android phone.
-          files: GlassPlay-${{ github.run_number }}.apk
+          tag_name: v${{ env.APP_VERSION }}
+          name: GlassPlay v${{ env.APP_VERSION }}
+          body: ${{ github.event.head_commit.message }}
+          files: GlassPlay-v${{ env.APP_VERSION }}.apk

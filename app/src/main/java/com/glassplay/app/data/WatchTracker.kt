@@ -380,13 +380,15 @@ class WatchTracker(
             )
         }
 
-        fun activityFrom(d: DocumentSnapshot): DayActivity? = DayActivity(
-            day = d.getString("day") ?: return null,
-            metaId = d.getString("metaId") ?: return null,
-            videoId = d.getString("videoId") ?: return null,
-            type = d.getString("type") ?: TYPE_MOVIE,
-            seconds = (d.getLong("seconds") ?: 0).coerceAtLeast(0),
-            completions = (d.getLong("completions") ?: 0).toInt().coerceAtLeast(0),
-        )
+        fun activityFrom(d: DocumentSnapshot): DayActivity? {
+            return DayActivity(
+                day = d.getString("day") ?: return null,
+                metaId = d.getString("metaId") ?: return null,
+                videoId = d.getString("videoId") ?: return null,
+                type = d.getString("type") ?: TYPE_MOVIE,
+                seconds = (d.getLong("seconds") ?: 0).coerceAtLeast(0),
+                completions = (d.getLong("completions") ?: 0).toInt().coerceAtLeast(0),
+            )
+        }
     }
 }

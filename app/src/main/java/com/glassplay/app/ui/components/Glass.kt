@@ -58,6 +58,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -311,6 +313,8 @@ fun GlassTextField(
     imeAction: ImeAction = ImeAction.Done,
     keyboardType: KeyboardType = KeyboardType.Text,
     onSubmit: () -> Unit = {},
+    /** Hides the text, for passwords. */
+    secret: Boolean = false,
 ) {
     BasicTextField(
         value = value,
@@ -320,6 +324,7 @@ fun GlassTextField(
         cursorBrush = SolidColor(Accent),
         keyboardOptions = KeyboardOptions(imeAction = imeAction, keyboardType = keyboardType),
         keyboardActions = KeyboardActions(onAny = { onSubmit() }),
+        visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
         modifier = modifier,
         decorationBox = { inner ->
             Row(

@@ -1,6 +1,7 @@
 package com.glassplay.app.ui.detail
 
 import android.os.Build
+import android.widget.Toast
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -27,12 +28,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -58,9 +62,11 @@ import com.glassplay.app.data.MetaDetail
 import com.glassplay.app.data.Video
 import com.glassplay.app.data.VideoProgress
 import com.glassplay.app.data.WatchEntry
+import com.glassplay.app.data.WatchStatus
 import com.glassplay.app.player.openLink
 import com.glassplay.app.ui.components.GlassButton
 import com.glassplay.app.ui.components.GlassChip
+import com.glassplay.app.ui.components.GlassDialog
 import com.glassplay.app.ui.components.GlassIconButton
 import com.glassplay.app.ui.components.Loadable
 import com.glassplay.app.ui.components.Placeholder
@@ -70,6 +76,7 @@ import com.glassplay.app.ui.components.bounceClick
 import com.glassplay.app.ui.components.formatDuration
 import com.glassplay.app.ui.components.noRippleClick
 import com.glassplay.app.ui.theme.Background
+import com.glassplay.app.ui.theme.Danger
 import com.glassplay.app.ui.theme.GlassType
 import com.glassplay.app.ui.theme.StarYellow
 import com.glassplay.app.ui.theme.TextSecondary
@@ -131,6 +138,12 @@ private fun DetailContent(meta: MetaDetail, onPlay: (StreamTarget) -> Unit) {
     val progressMap by Graph.history.videoProgress.collectAsState()
     val entries by Graph.history.entries.collectAsState()
     val entry = entries.firstOrNull { it.metaId == meta.id }
+    val trackedVideos by Graph.tracker.videos.collectAsState()
+    val trackedTitles by Graph.tracker.titles.collectAsState()
+    val status = remember(trackedTitles, trackedVideos, meta.id) { Graph.tracker.statusOf(meta.id) }
+    var statusMenu by remember { mutableStateOf(false) }
+    // Keep the episode count and "ended" up to date for the profile's statuses.
+    LaunchedEffect(meta, trackedTitles.containsKey(meta.id)) { Graph.tracker.describe(meta) }
 
     val episodes = remember(meta) {
         meta.videos.sortedWith(
@@ -177,6 +190,24 @@ private fun DetailContent(meta: MetaDetail, onPlay: (StreamTarget) -> Unit) {
                             Spacer(Modifier.width(10.dp))
                             GlassIconButton(Icons.Rounded.Movie, "Trailer", { openLink(context, "https://www.youtube.com/watch?v=$yt") }, size = 48)
                         }
+                        if (Graph.accounts.enabled) {
+                            Spacer(Modifier.width(10.dp))
+                            GlassIconButton(
+                                if (status == null) Icons.Rounded.BookmarkBorder else Icons.Rounded.Bookmark,
+                                "Watch status",
+                                { statusMenu = true },
+                                size = 48,
+                            )
+                        }
+                    }
+                    status?.let {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            it.label,
+                            style = GlassType.caption,
+                            color = Color.White,
+                            modifier = Modifier.glass(CircleShape, 0.8f).padding(horizontal = 10.dp, vertical = 5.dp),
+                        )
                     }
                     if (sub != null) {
                         Spacer(Modifier.height(8.dp))
@@ -217,7 +248,9 @@ private fun DetailContent(meta: MetaDetail, onPlay: (StreamTarget) -> Unit) {
             }
 
             if (meta.isSeries) {
-                item(key = "ep-title") { SectionHeader("Episodes") }
+                item(key = "ep-title") {
+                    SectionHeader("Episodes", subtitle = if (Graph.accounts.enabled) "Long-press to mark watched" else null)
+                }
                 if (seasons.size > 1) {
                     item(key = "seasons") {
                         LazyRow(
@@ -237,9 +270,66 @@ private fun DetailContent(meta: MetaDetail, onPlay: (StreamTarget) -> Unit) {
                 }
                 val seasonEpisodes = episodes.filter { (it.season ?: 0) == season }
                 items(seasonEpisodes, key = { "ep-" + it.id }) { v ->
-                    EpisodeRow(v, progressMap[v.id], isNext = v.id == nextVideo?.id) { onPlay(StreamTarget(meta, v)) }
+                    val watched = progressMap[v.id]?.completed == true || (trackedVideos[v.id]?.completions ?: 0) > 0
+                    EpisodeRow(
+                        v,
+                        progressMap[v.id],
+                        watched = watched,
+                        isNext = v.id == nextVideo?.id,
+                        onLongClick = {
+                            Graph.tracker.markVideo(meta, v, !watched)
+                            Toast.makeText(
+                                context,
+                                if (watched) "Marked as not watched" else "Marked as watched",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        },
+                    ) { onPlay(StreamTarget(meta, v)) }
                 }
             }
+        }
+    }
+
+    if (statusMenu) {
+        StatusDialog(meta, status, onDismiss = { statusMenu = false })
+    }
+}
+
+@Composable
+private fun StatusDialog(meta: MetaDetail, current: WatchStatus?, onDismiss: () -> Unit) {
+    GlassDialog(onDismiss = onDismiss) {
+        Text(meta.name, style = GlassType.title3, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(
+            current?.let { "Now: ${it.label}" } ?: "Not in your history yet",
+            style = GlassType.footnote,
+            color = TextSecondary,
+        )
+        Spacer(Modifier.height(16.dp))
+        val options = listOf(
+            "watching" to "Watching",
+            "finished" to if (meta.isSeries) "Finished (all episodes watched)" else "Watched",
+            "dropped" to "Dropped",
+        )
+        options.forEach { (value, label) ->
+            GlassButton(
+                label,
+                onClick = {
+                    Graph.tracker.markTitle(meta, value)
+                    onDismiss()
+                },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            )
+        }
+        if (current != null) {
+            GlassButton(
+                "Remove from history",
+                contentColor = Danger,
+                onClick = {
+                    Graph.tracker.forget(meta.id)
+                    onDismiss()
+                },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            )
         }
     }
 }
@@ -323,13 +413,20 @@ private fun InfoLine(label: String, value: String) {
 }
 
 @Composable
-private fun EpisodeRow(video: Video, progress: VideoProgress?, isNext: Boolean, onClick: () -> Unit) {
+private fun EpisodeRow(
+    video: Video,
+    progress: VideoProgress?,
+    watched: Boolean,
+    isNext: Boolean,
+    onLongClick: () -> Unit,
+    onClick: () -> Unit,
+) {
     val shape = RoundedCornerShape(20.dp)
     Row(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 5.dp)
-            .bounceClick(0.97f, onClick = onClick)
+            .bounceClick(0.97f, onLongClick = onLongClick, onClick = onClick)
             .glass(shape, if (isNext) 1.4f else 0.75f)
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -349,13 +446,13 @@ private fun EpisodeRow(video: Video, progress: VideoProgress?, isNext: Boolean, 
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
-            if (progress != null && !progress.completed && progress.fraction > 0f) {
+            if (progress != null && !watched && progress.fraction > 0f) {
                 ProgressLine(
                     progress.fraction,
                     Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(6.dp),
                 )
             }
-            if (progress?.completed == true) {
+            if (watched) {
                 Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
                 Icon(
                     Icons.Rounded.CheckCircle,

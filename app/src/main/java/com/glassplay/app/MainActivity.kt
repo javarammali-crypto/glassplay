@@ -17,7 +17,10 @@ class MainActivity : ComponentActivity() {
         )
         super.onCreate(savedInstanceState)
         // Unfinished torrent downloads continue from where they stopped.
-        if (savedInstanceState == null) Graph.downloads.resumeAll()
+        if (savedInstanceState == null) {
+            Graph.downloads.resumeAll()
+            Graph.updater.check(manual = false)
+        }
         setContent {
             GlassTheme {
                 AppRoot()

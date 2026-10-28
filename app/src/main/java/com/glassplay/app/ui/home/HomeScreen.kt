@@ -55,6 +55,7 @@ import com.glassplay.app.data.MetaPreview
 import com.glassplay.app.data.WatchEntry
 import com.glassplay.app.data.typeLabel
 import com.glassplay.app.player.resumeEntry
+import com.glassplay.app.ui.account.Avatar
 import com.glassplay.app.ui.components.ContinueCard
 import com.glassplay.app.ui.components.GlassButton
 import com.glassplay.app.ui.components.GlassDialog
@@ -77,7 +78,7 @@ import java.util.Calendar
 import kotlin.math.absoluteValue
 
 @Composable
-fun HomeScreen(onOpen: (String, String) -> Unit, onGoAddons: () -> Unit) {
+fun HomeScreen(onOpen: (String, String) -> Unit, onGoAddons: () -> Unit, onOpenProfile: () -> Unit) {
     val context = LocalContext.current
     val addons by Graph.addons.installed.collectAsState()
     val ready by Graph.addons.ready.collectAsState()
@@ -100,7 +101,22 @@ fun HomeScreen(onOpen: (String, String) -> Unit, onGoAddons: () -> Unit) {
     }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 130.dp)) {
-        item(key = "title") { LargeTitle("Watch Now", caption = greeting) }
+        item(key = "title") {
+            Box {
+                LargeTitle("Watch Now", caption = greeting)
+                if (Graph.accounts.enabled) {
+                    val profile by Graph.accounts.profile.collectAsState()
+                    Avatar(
+                        profile,
+                        40,
+                        Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 20.dp, bottom = 14.dp)
+                            .bounceClick(0.9f, onClick = onOpenProfile),
+                    )
+                }
+            }
+        }
 
         if (rows.isNotEmpty()) {
             item(key = "hero") { HeroSection(rows.first().first, rows.first().second, onOpen) }

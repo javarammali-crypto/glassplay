@@ -11,35 +11,37 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.runtime.Composable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -48,10 +50,16 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.glassplay.app.CrashLog
+import com.glassplay.app.Graph
+import com.glassplay.app.data.UpdateState
+import com.glassplay.app.ui.account.AuthScreen
+import com.glassplay.app.ui.account.ProfileScreen
 import com.glassplay.app.ui.addons.AddonsScreen
 import com.glassplay.app.ui.components.GlassButton
 import com.glassplay.app.ui.components.GlassDialog
 import com.glassplay.app.ui.components.GlassTabBar
+import com.glassplay.app.ui.components.ProgressLine
+import com.glassplay.app.ui.components.Spinner
 import com.glassplay.app.ui.components.TabItem
 import com.glassplay.app.ui.detail.DetailScreen
 import com.glassplay.app.ui.discover.DiscoverScreen
@@ -60,6 +68,7 @@ import com.glassplay.app.ui.downloads.DownloadsScreen
 import com.glassplay.app.ui.home.HomeScreen
 import com.glassplay.app.ui.search.SearchScreen
 import com.glassplay.app.ui.theme.AuroraBackground
+import com.glassplay.app.ui.theme.Danger
 import com.glassplay.app.ui.theme.GlassType
 import com.glassplay.app.ui.theme.TextSecondary
 import com.glassplay.app.ui.theme.TextTertiary
@@ -68,6 +77,24 @@ private val IosEase = CubicBezierEasing(0.2f, 0.9f, 0.1f, 1f)
 
 @Composable
 fun AppRoot() {
+    val accounts = Graph.accounts
+    val ready by accounts.ready.collectAsState()
+    val user by accounts.user.collectAsState()
+    when {
+        // Waiting to hear whether someone is signed in.
+        !ready -> Box(Modifier.fillMaxSize()) {
+            AuroraBackground()
+            Spinner(Modifier.align(Alignment.Center))
+        }
+        accounts.enabled && user == null -> AuthScreen()
+        else -> MainApp()
+    }
+    CrashReportDialog()
+    UpdateDialog()
+}
+
+@Composable
+private fun MainApp() {
     val nav = rememberNavController()
     val backStack by nav.currentBackStackEntryAsState()
     val route = backStack?.destination?.route
@@ -107,7 +134,7 @@ fun AppRoot() {
             popExitTransition = { fadeOut(tween(160)) },
         ) {
             composable("home") {
-                HomeScreen(onOpen = openDetail, onGoAddons = { selectTab("addons") })
+                HomeScreen(onOpen = openDetail, onGoAddons = { selectTab("addons") }, onOpenProfile = { nav.navigate("profile") })
             }
             composable("discover") {
                 DiscoverScreen(onOpen = openDetail, onOpenFranchise = { nav.navigate("franchise/${Uri.encode(it)}") })
@@ -134,6 +161,7 @@ fun AppRoot() {
             }
             composable("search") { SearchScreen(onOpen = openDetail) }
             composable("downloads") { DownloadsScreen() }
+            composable("profile") { ProfileScreen(onBack = { nav.popBackStack() }, onOpen = openDetail) }
             composable("addons") { AddonsScreen() }
             composable(
                 route = "detail/{type}/{id}",
@@ -169,8 +197,67 @@ fun AppRoot() {
             GlassTabBar(tabs, tabIndex.coerceAtLeast(0)) { i -> selectTab(tabs[i].route) }
         }
     }
+}
 
-    CrashReportDialog()
+/** Offers a newer GlassPlay release, downloads it and hands it to Android's installer. */
+@Composable
+private fun UpdateDialog() {
+    val state by Graph.updater.state.collectAsState()
+    val s = state
+    val release = when (s) {
+        is UpdateState.Available -> s.release
+        is UpdateState.Downloading -> s.release
+        is UpdateState.ReadyToInstall -> s.release
+        is UpdateState.Failed -> s.release
+        else -> null
+    } ?: return
+    GlassDialog(onDismiss = { if (s !is UpdateState.Downloading) Graph.updater.dismiss() }) {
+        Text("Update available", style = GlassType.title3, color = Color.White)
+        Text(
+            "${release.name} is ready. You have ${Graph.updater.currentName}.",
+            style = GlassType.subhead,
+            color = TextSecondary,
+        )
+        if (release.notes.isNotBlank()) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                release.notes,
+                style = GlassType.footnote,
+                color = TextSecondary,
+                modifier = Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState()),
+            )
+        }
+        Spacer(Modifier.height(16.dp))
+        when (s) {
+            is UpdateState.Downloading -> {
+                ProgressLine(s.progress, Modifier.fillMaxWidth())
+                Spacer(Modifier.height(6.dp))
+                Text("Downloading… ${(s.progress * 100).toInt()}%", style = GlassType.footnote, color = TextSecondary)
+            }
+            is UpdateState.ReadyToInstall -> {
+                Text(
+                    "If Android asks, allow GlassPlay to install apps, then come back and tap Install again.",
+                    style = GlassType.footnote,
+                    color = TextTertiary,
+                )
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    GlassButton("Later", onClick = { Graph.updater.dismiss() }, modifier = Modifier.weight(1f))
+                    GlassButton("Install", primary = true, onClick = { Graph.updater.install(s.file) }, modifier = Modifier.weight(1f))
+                }
+            }
+            else -> {
+                if (s is UpdateState.Failed) {
+                    Text(s.message, style = GlassType.footnote, color = Danger)
+                    Spacer(Modifier.height(10.dp))
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    GlassButton("Later", onClick = { Graph.updater.dismiss() }, modifier = Modifier.weight(1f))
+                    GlassButton("Update", primary = true, onClick = { Graph.updater.download(release) }, modifier = Modifier.weight(1f))
+                }
+            }
+        }
+    }
 }
 
 /** After a crash, shows what went wrong so it can be copied and reported. */

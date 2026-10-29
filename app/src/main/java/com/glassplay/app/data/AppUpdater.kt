@@ -1,5 +1,10 @@
 package com.glassplay.app.data
 
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.async
+import java.util.concurrent.atomic.AtomicLong
+import java.io.RandomAccessFile
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -31,7 +36,7 @@ sealed interface UpdateState {
     data object Checking : UpdateState
     data object UpToDate : UpdateState
     data class Available(val release: AppRelease) : UpdateState
-    data class Downloading(val release: AppRelease, val progress: Float) : UpdateState
+    data class Downloading(val release: AppRelease, val progress: Float, val bytesPerSecond: Long = 0) : UpdateState
     data class ReadyToInstall(val release: AppRelease, val file: File) : UpdateState
     data class Failed(val message: String, val release: AppRelease?) : UpdateState
 }
@@ -141,36 +146,83 @@ class AppUpdater(private val context: Context, private val scope: CoroutineScope
         // Older downloads are no longer needed.
         dir.listFiles()?.forEach { it.delete() }
         val partial = File(dir, "${file.name}.part")
-        val req = Request.Builder().url(release.apkUrl).header("User-Agent", "GlassPlay").build()
-        http.newCall(req).execute().use { resp ->
-            val body = resp.body
-            if (!resp.isSuccessful || body == null) throw IOException("Download failed (${resp.code})")
-            val total = body.contentLength().takeIf { it > 0 } ?: release.size
-            var done = 0L
-            var lastShown = 0f
-            body.byteStream().use { input ->
-                partial.outputStream().use { output ->
-                    val buffer = ByteArray(64 * 1024)
-                    while (true) {
-                        val n = input.read(buffer)
-                        if (n < 0) break
-                        output.write(buffer, 0, n)
-                        done += n
-                        val progress = if (total > 0) done.toFloat() / total else 0f
-                        if (progress - lastShown >= 0.01f) {
-                            lastShown = progress
-                            _state.value = UpdateState.Downloading(release, progress)
-                        }
-                    }
-                }
-            }
-            if (total > 0 && done != total) throw IOException("Incomplete download")
+
+        // Ask for the first byte: this follows GitHub's redirect to the real file and says
+        // whether it can be fetched in pieces.
+        val probe = Request.Builder().url(release.apkUrl).header("User-Agent", "GlassPlay").header("Range", "bytes=0-0").build()
+        val (url, total, ranged) = http.newCall(probe).execute().use { resp ->
+            if (!resp.isSuccessful) throw IOException("Download failed (${resp.code})")
+            val size = resp.header("Content-Range")?.substringAfter('/')?.toLongOrNull() ?: release.size
+            Triple(resp.request.url.toString(), size, resp.code == 206 && size > 0)
         }
+
+        val progress = Progress(release, total)
+        if (ranged && total >= PARALLEL_MIN_BYTES) {
+            // Several connections at once: many networks limit how fast a single download can go.
+            RandomAccessFile(partial, "rw").use { it.setLength(total) }
+            val part = (total + CONNECTIONS - 1) / CONNECTIONS
+            coroutineScope {
+                (0 until CONNECTIONS).map { i ->
+                    val from = i * part
+                    val to = minOf(total, from + part) - 1
+                    async { if (from <= to) fetchRange(url, from, to, partial, progress) }
+                }.awaitAll()
+            }
+        } else {
+            fetchRange(url, 0, -1, partial, progress)
+        }
+        if (total > 0 && partial.length() != total) throw IOException("Incomplete download")
         if (!partial.renameTo(file)) throw IOException("Couldn't save the update")
         file
     }
 
+    /** Downloads bytes [from]..[to] (to the end when [to] is -1) into [target] at the same offset. */
+    private fun fetchRange(url: String, from: Long, to: Long, target: File, progress: Progress) {
+        val req = Request.Builder().url(url).header("User-Agent", "GlassPlay").apply {
+            if (to >= 0) header("Range", "bytes=$from-$to")
+        }.build()
+        http.newCall(req).execute().use { resp ->
+            val body = resp.body
+            if (!resp.isSuccessful || body == null) throw IOException("Download failed (${resp.code})")
+            RandomAccessFile(target, "rw").use { out ->
+                out.seek(from)
+                val buffer = ByteArray(128 * 1024)
+                body.byteStream().use { input ->
+                    while (true) {
+                        val n = input.read(buffer)
+                        if (n < 0) break
+                        out.write(buffer, 0, n)
+                        progress.add(n.toLong())
+                    }
+                }
+            }
+        }
+    }
+
+    /** Adds up progress from every connection and reports it about twice a second. */
+    private inner class Progress(private val release: AppRelease, private val total: Long) {
+        private val done = AtomicLong()
+        private val started = System.currentTimeMillis()
+        @Volatile private var lastShown = 0L
+
+        fun add(bytes: Long) {
+            val now = System.currentTimeMillis()
+            val sum = done.addAndGet(bytes)
+            if (now - lastShown < 400) return
+            lastShown = now
+            val elapsed = (now - started).coerceAtLeast(1)
+            _state.value = UpdateState.Downloading(
+                release,
+                if (total > 0) (sum.toFloat() / total).coerceAtMost(1f) else 0f,
+                sum * 1000 / elapsed,
+            )
+        }
+    }
+
     companion object {
+        private const val CONNECTIONS = 4
+        private const val PARALLEL_MIN_BYTES = 4L * 1024 * 1024
+
         /** Reads "v7" from the tag, or from a name like "GlassPlay v7" if the tag has no number. */
         fun releaseNumber(tag: String?, name: String?): Int? =
             tag?.let { Regex("^v(\\d+)$", RegexOption.IGNORE_CASE).find(it.trim())?.groupValues?.get(1)?.toIntOrNull() }

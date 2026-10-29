@@ -1,5 +1,6 @@
 package com.glassplay.app.ui
 
+import com.glassplay.app.ui.downloads.formatBytes
 import android.net.Uri
 import android.os.Build
 import androidx.compose.animation.AnimatedContentTransitionScope
@@ -286,7 +287,8 @@ private fun UpdateDialog() {
             is UpdateState.Downloading -> {
                 ProgressLine(s.progress, Modifier.fillMaxWidth())
                 Spacer(Modifier.height(6.dp))
-                Text("Downloading… ${(s.progress * 100).toInt()}%", style = GlassType.footnote, color = TextSecondary)
+                val speed = if (s.bytesPerSecond > 0) " · ${formatBytes(s.bytesPerSecond)}/s" else ""
+                Text("Downloading… ${(s.progress * 100).toInt()}%$speed", style = GlassType.footnote, color = TextSecondary)
             }
             is UpdateState.ReadyToInstall -> {
                 Text(

@@ -70,6 +70,9 @@ class TorrentEngine(context: Context) {
         streamDir.deleteRecursively()
         streamDir.mkdirs()
         val settings = SettingsPack()
+            // Uploading flat out to other peers can choke the phone's own downloads
+            // (including the stream itself) on slower uplinks, so cap it.
+            .uploadRateLimit(UPLOAD_LIMIT_BYTES)
             .connectionsLimit(200)
             .activeDownloads(6)
             .activeLimit(12)
@@ -251,6 +254,7 @@ class TorrentEngine(context: Context) {
 
     companion object {
         private const val METADATA_TIMEOUT_MS = 90_000L
+        private const val UPLOAD_LIMIT_BYTES = 256 * 1024
         private val VIDEO_EXTENSIONS = setOf("mkv", "mp4", "m4v", "avi", "mov", "webm", "ts", "m2ts", "wmv", "flv", "mpg", "mpeg", "3gp", "ogv")
 
         fun isVideo(name: String): Boolean = name.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS

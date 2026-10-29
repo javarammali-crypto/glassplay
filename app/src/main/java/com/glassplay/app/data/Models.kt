@@ -209,6 +209,8 @@ data class MetaDetail(
     val directors: List<String>,
     val trailerYtId: String?,
     val videos: List<Video>,
+    /** "Ended", "Continuing" and so on, for shows. */
+    val status: String? = null,
 ) {
     val isSeries: Boolean get() = type != "movie" && videos.isNotEmpty()
 }
@@ -250,6 +252,7 @@ fun parseMeta(o: JSONObject, fallbackType: String): MetaDetail? {
         directors = o.strList("director"),
         trailerYtId = trailer,
         videos = videos,
+        status = o.str("status"),
     )
 }
 

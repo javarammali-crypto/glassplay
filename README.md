@@ -4,6 +4,10 @@ An Android media center with a glass-style interface and a plug-in system compat
 
 ## Features
 
+- **Accounts:** sign in with email and password or with Google (Firebase). Your profile and watch history are saved to your account.
+- **Profile:** movies and TV shows watched and hours watched (today, yesterday, this week, month, year or all time), episodes watched, and your Watching / Finished / Dropped titles. Mark any movie, show or episode by hand.
+- **Updates:** the app offers new releases when it opens, and downloads and installs them.
+
 - **Home:** featured carousel, Continue Watching with progress, and rows from your add-ons' catalogs.
 - **Discover:** Movies and TV Shows tabs, catalog and genre filters, infinite scrolling, plus built-in catalogs for streaming services (Netflix, Prime Video, JioHotstar, Disney+, HBO Max, Apple TV+, ZEE5, Sony LIV and more).
 - **Franchises:** Marvel, DC, Harry Potter, Star Wars, Bond, Fast & Furious and 40+ other franchises, each with every movie in release order.
@@ -21,6 +25,13 @@ GlassPlay speaks the same add-on protocol as Stremio, so add-ons built for Strem
 - **Streams:** direct links (`url`, with `proxyHeaders`), torrents (`infoHash` + `fileIdx` + `sources`, or magnet links), YouTube (`ytId`) and `externalUrl`.
 - **Torrents** are streamed inside the app, like Stremio's streaming server: the pieces the player needs are downloaded first, so playback starts before the download finishes and seeking works. Downloaded data is kept in the app's cache only while you watch.
 - **Subtitles** from subtitle add-ons and from streams that include their own. OpenSubtitles v3, which Stremio also installs by default, is added automatically. Subtitles are downloaded before playback and only working files are offered, in your phone's language, English (and Hindi in India) plus one per other language. Pick them with the CC button in the player.
+
+## How watching is counted
+
+- Time watched is real playing time, per day; skipping ahead adds nothing.
+- A movie is finished within 15 minutes of its end, an episode within its last 10% (at least 2 minutes). Finishing counts the full length.
+- Rewatching adds the time again but counts as one title.
+- Not finished and nothing watched for 15 days: dropped. A show still airing with every released episode watched is "up to date".
 
 ## Getting the APK
 

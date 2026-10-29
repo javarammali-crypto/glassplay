@@ -91,6 +91,7 @@ import com.glassplay.app.Graph
 import com.glassplay.app.data.AddonClient
 import com.glassplay.app.data.SubtitleItem
 import com.glassplay.app.data.WatchEntry
+import com.glassplay.app.data.WatchTracker
 import com.glassplay.app.torrent.TorrentStatus
 import com.glassplay.app.ui.components.GlassButton
 import com.glassplay.app.ui.components.GlassIconButton
@@ -119,6 +120,8 @@ class PlayerActivity : ComponentActivity() {
     private var player: ExoPlayer? = null
     private lateinit var req: PlayRequest
     private var saveJob: Job? = null
+    /** Counts real watching time for the profile's history; null when signed out. */
+    private var tracking: WatchTracker.Session? = null
 
     /** Set while a torrent is open, so it can be stopped when the player closes. */
     private var torrentHash: String? = null
@@ -169,7 +172,15 @@ class PlayerActivity : ComponentActivity() {
 
         exo.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_ENDED) save(ended = true)
+                if (playbackState == Player.STATE_ENDED) {
+                    save(ended = true)
+                    val duration = exo.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: 0L
+                    tracking?.played(0, duration, duration)
+                }
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (!isPlaying) tracking?.flush()
             }
 
             override fun onPlayerError(e: PlaybackException) {
@@ -226,10 +237,21 @@ class PlayerActivity : ComponentActivity() {
             exo.prepare()
         }
 
+        tracking = Graph.tracker.session(req)
         saveJob = lifecycleScope.launch {
+            var ticks = 0
+            var last = System.currentTimeMillis()
             while (isActive) {
-                delay(5_000)
-                if (exo.isPlaying) save()
+                delay(1_000)
+                val now = System.currentTimeMillis()
+                // Only time spent actually playing counts; seeking and pauses add nothing.
+                if (exo.isPlaying) {
+                    val duration = exo.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: 0L
+                    val elapsed = ((now - last).coerceIn(0, 5_000) * exo.playbackParameters.speed).toLong()
+                    tracking?.played(elapsed, exo.currentPosition, duration)
+                    if (++ticks % 5 == 0) save()
+                }
+                last = now
             }
         }
     }
@@ -330,6 +352,7 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
+        tracking?.flush()
         if (player != null) {
             save()
             player?.pause()

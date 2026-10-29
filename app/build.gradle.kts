@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -12,27 +14,45 @@ android {
         applicationId = "com.glassplay.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.3"
+        // GitHub builds stamp their release number (v1, v2, …) into the app so it can tell when
+        // a newer release is out. versionCode follows the build run, so it only ever goes up.
+        val release = System.getenv("APP_VERSION")?.toIntOrNull() ?: 0
+        versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 4
+        versionName = if (release > 0) "v$release" else "dev"
+        buildConfigField("int", "RELEASE_NUMBER", release.toString())
+        buildConfigField("String", "UPDATE_REPO", "\"javarammali-crypto/glassplay\"")
+
+        // Firebase (accounts and synced watch history). These values identify the Firebase
+        // project and aren't secret; they live in firebase.properties at the repo root.
+        val firebase = Properties().apply {
+            rootProject.file("firebase.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+        }
+        fun firebaseValue(key: String) = "\"" + (firebase.getProperty(key) ?: "").trim() + "\""
+        buildConfigField("String", "FIREBASE_API_KEY", firebaseValue("apiKey"))
+        buildConfigField("String", "FIREBASE_APP_ID", firebaseValue("appId"))
+        buildConfigField("String", "FIREBASE_PROJECT_ID", firebaseValue("projectId"))
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", firebaseValue("webClientId"))
     }
 
-    // A fixed key so every new build installs as an update over the previous one.
+    // Releases are signed with a private key that only GitHub has (stored as repository
+    // secrets), so nobody else can publish a build that installs over GlassPlay. Builds made
+    // elsewhere use Android's debug key and can't update a released app.
+    val keystorePath = System.getenv("SIGNING_KEYSTORE_PATH")
     signingConfigs {
-        create("glassplay") {
-            storeFile = file("glassplay.keystore")
-            storePassword = "glassplay"
-            keyAlias = "glassplay"
-            keyPassword = "glassplay"
+        if (keystorePath != null) {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("SIGNING_PASSWORD")
+                keyAlias = System.getenv("SIGNING_KEY_ALIAS") ?: "glassplay"
+                keyPassword = System.getenv("SIGNING_PASSWORD")
+            }
         }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("glassplay")
-        }
-        debug {
-            signingConfig = signingConfigs.getByName("glassplay")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 
@@ -45,6 +65,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     lint {
         checkReleaseBuilds = false
@@ -87,4 +108,14 @@ dependencies {
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.0.4")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
+
+    // Accounts and synced watch history.
+    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
+    implementation("com.google.firebase:firebase-auth")
+    implementation("com.google.firebase:firebase-firestore")
+    // Sign in with Google.
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 }

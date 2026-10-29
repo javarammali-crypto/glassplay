@@ -85,11 +85,15 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.SubtitleView
 import coil3.compose.AsyncImage
 import com.glassplay.app.Graph
 import com.glassplay.app.data.AddonClient
+import com.glassplay.app.data.SubtitleBackground
 import com.glassplay.app.data.SubtitleItem
+import com.glassplay.app.data.SubtitleStyle
 import com.glassplay.app.data.WatchEntry
 import com.glassplay.app.data.WatchTracker
 import com.glassplay.app.torrent.TorrentStatus
@@ -228,13 +232,28 @@ class PlayerActivity : ComponentActivity() {
                     return@launch
                 }
             }
-            withTimeoutOrNull(SUBTITLE_WAIT_MS) { fromAddons.await() }
-            fromAddons.cancel()
+            // A downloaded file is ready right away, so it doesn't wait for subtitles: any that
+            // arrive later are added without restarting the video.
+            val local = url.startsWith("file:")
+            withTimeoutOrNull(if (local) LOCAL_SUBTITLE_WAIT_MS else SUBTITLE_WAIT_MS) { fromAddons.await() }
             subtitles = readySubtitles.entries.sortedBy { it.key }.map { it.value }
             playUrl = url
             starting.value = false
             exo.setMediaItem(buildMediaItem(), resumeAt)
             exo.prepare()
+            if (local && fromAddons.isActive) {
+                withTimeoutOrNull(SUBTITLE_WAIT_MS) { fromAddons.await() }
+                val late = readySubtitles.entries.sortedBy { it.key }.map { it.value }
+                if (late.size > subtitles.size && error.value == null) {
+                    subtitles = late
+                    val position = exo.currentPosition
+                    val playing = exo.playWhenReady
+                    exo.setMediaItem(buildMediaItem(), position)
+                    exo.prepare()
+                    exo.playWhenReady = playing
+                }
+            }
+            fromAddons.cancel()
         }
 
         tracking = Graph.tracker.session(req)
@@ -369,6 +388,7 @@ class PlayerActivity : ComponentActivity() {
 
     private companion object {
         const val SUBTITLE_WAIT_MS = 8_000L
+        const val LOCAL_SUBTITLE_WAIT_MS = 1_500L
         const val SUBTITLE_FILE_MAX_BYTES = 4L * 1024 * 1024
 
         /** Works out the subtitle format from its contents; null if it isn't a subtitle at all. */
@@ -458,6 +478,7 @@ private fun PlayerScreen(
     var fitHint by remember { mutableStateOf<String?>(null) }
     val torrentStatus by Graph.torrents.status.collectAsState()
     val status = req.torrent?.let { torrentStatus[it.infoHash] }
+    val subtitleStyle by Graph.settings.subtitles.collectAsState()
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
@@ -530,7 +551,10 @@ private fun PlayerScreen(
                     }
                 }
             },
-            update = { it.resizeMode = fit.mode },
+            update = {
+                it.resizeMode = fit.mode
+                applySubtitleStyle(it, subtitleStyle)
+            },
         )
 
         AnimatedVisibility(
@@ -627,6 +651,26 @@ private fun PlayerScreen(
             }
         }
     }
+}
+
+/** Subtitles follow the viewer's settings rather than the file's own styling. */
+@OptIn(UnstableApi::class)
+private fun applySubtitleStyle(view: PlayerView, style: SubtitleStyle) {
+    val subtitles = view.subtitleView ?: return
+    subtitles.setApplyEmbeddedStyles(false)
+    subtitles.setApplyEmbeddedFontSizes(false)
+    val boxed = style.background != SubtitleBackground.SHADOW
+    subtitles.setStyle(
+        CaptionStyleCompat(
+            style.textColor.argb,
+            style.background.argb,
+            android.graphics.Color.TRANSPARENT,
+            if (boxed) CaptionStyleCompat.EDGE_TYPE_NONE else CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW,
+            android.graphics.Color.BLACK,
+            null,
+        )
+    )
+    subtitles.setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * style.size.scale)
 }
 
 /** Full-screen loading state with the title's artwork while the stream gets ready. */

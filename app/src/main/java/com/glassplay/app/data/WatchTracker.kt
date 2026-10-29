@@ -203,11 +203,20 @@ class WatchTracker(
         batch.commit()
     }
 
+    /** Marks several episodes watched at once, such as everything up to the one chosen. */
+    fun markVideosWatched(meta: MetaDetail, videos: List<Video>) {
+        val base = base() ?: return
+        val now = System.currentTimeMillis()
+        val batch = Batch(base.firestore)
+        batch.set(base.collection("titles").document(key(meta.id)), titleFields(meta, now))
+        videos.filter { (_videos.value[it.id]?.completions ?: 0) == 0 }
+            .forEach { addManualCompletion(batch, base, meta, it, now) }
+        batch.commit()
+    }
+
     private fun addManualCompletion(batch: Batch, base: DocumentReference, meta: MetaDetail, video: Video?, now: Long) {
         val videoId = video?.id ?: meta.id
-        val known = _videos.value[videoId]?.durationMs ?: 0
-        val runtime = if (known > 0) known else Tracking.parseRuntimeMs(meta.runtime)
-        val seconds = runtime / 1000
+        val seconds = estimateRuntimeMs(meta, video) / 1000
         val day = Tracking.dayOf(now)
         batch.set(
             base.collection("videos").document(key(videoId)),
@@ -227,11 +236,52 @@ class WatchTracker(
         )
     }
 
+    /**
+     * How long a movie or episode runs, for "mark as watched". Uses what's known best: its
+     * real length if it was ever played, the show's other episodes, the listed runtime, and
+     * finally a typical length (2 hours for a movie, 45 minutes for an episode).
+     */
+    private fun estimateRuntimeMs(meta: MetaDetail, video: Video?): Long {
+        val videoId = video?.id ?: meta.id
+        _videos.value[videoId]?.durationMs?.takeIf { it > 0 }?.let { return it }
+        if (video != null) {
+            val played = _videos.value.values.filter { it.metaId == meta.id && it.durationMs > 0 }.map { it.durationMs }
+            if (played.isNotEmpty()) return played.average().toLong()
+        }
+        Tracking.parseRuntimeMs(meta.runtime).takeIf { it > 0 }?.let { return it }
+        _titles.value[meta.id]?.runtimeMs?.takeIf { it > 0 }?.let { return it }
+        return if (meta.isSeries || video != null) DEFAULT_EPISODE_MS else DEFAULT_MOVIE_MS
+    }
+
     /** Keeps the show details that decide "finished" and "up to date" current. */
     fun describe(meta: MetaDetail) {
         val base = base() ?: return
         if (!_titles.value.containsKey(meta.id)) return
         base.collection("titles").document(key(meta.id)).set(titleFields(meta, null), SetOptions.merge())
+        repairManualTime(base, meta)
+    }
+
+    /** Earlier versions could mark things watched without counting any time; add it now. */
+    private fun repairManualTime(base: DocumentReference, meta: MetaDetail) {
+        val broken = _videos.value.values.filter {
+            it.metaId == meta.id && it.completions > 0 && it.manualDay != null && it.manualSeconds == 0L
+        }
+        if (broken.isEmpty()) return
+        val batch = Batch(base.firestore)
+        broken.forEach { record ->
+            val video = meta.videos.firstOrNull { it.id == record.videoId }
+            val seconds = estimateRuntimeMs(meta, video) / 1000
+            if (seconds <= 0) return@forEach
+            batch.set(base.collection("videos").document(key(record.videoId)), mapOf("manualSeconds" to seconds))
+            batch.set(
+                base.collection("activity").document("${record.manualDay}_${key(record.videoId)}"),
+                mapOf(
+                    "day" to record.manualDay, "metaId" to meta.id, "videoId" to record.videoId, "type" to meta.type,
+                    "seconds" to FieldValue.increment(seconds),
+                ),
+            )
+        }
+        batch.commit()
     }
 
     private fun describe(metaId: String, type: String) {
@@ -344,6 +394,9 @@ class WatchTracker(
     }
 
     private companion object {
+        const val DEFAULT_MOVIE_MS = 120L * 60_000
+        const val DEFAULT_EPISODE_MS = 45L * 60_000
+
         /** Firestore document ids can't contain "/". */
         fun key(id: String) = id.replace('/', '_')
 

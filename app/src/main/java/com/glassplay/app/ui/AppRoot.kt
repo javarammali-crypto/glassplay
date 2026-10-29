@@ -1,9 +1,11 @@
 package com.glassplay.app.ui
 
 import android.net.Uri
+import android.os.Build
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -11,6 +13,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -27,15 +30,18 @@ import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -61,17 +67,23 @@ import com.glassplay.app.ui.components.GlassTabBar
 import com.glassplay.app.ui.components.ProgressLine
 import com.glassplay.app.ui.components.Spinner
 import com.glassplay.app.ui.components.TabItem
+import com.glassplay.app.ui.components.frostedBackdrop
 import com.glassplay.app.ui.detail.DetailScreen
 import com.glassplay.app.ui.discover.DiscoverScreen
 import com.glassplay.app.ui.discover.FranchiseScreen
 import com.glassplay.app.ui.downloads.DownloadsScreen
 import com.glassplay.app.ui.home.HomeScreen
-import com.glassplay.app.ui.search.SearchScreen
+import com.glassplay.app.ui.search.SearchOverlay
+import com.glassplay.app.ui.settings.SettingsScreen
 import com.glassplay.app.ui.theme.AuroraBackground
 import com.glassplay.app.ui.theme.Danger
 import com.glassplay.app.ui.theme.GlassType
+import com.glassplay.app.ui.theme.Ink
+import com.glassplay.app.ui.theme.LocalPalette
 import com.glassplay.app.ui.theme.TextSecondary
 import com.glassplay.app.ui.theme.TextTertiary
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 
 private val IosEase = CubicBezierEasing(0.2f, 0.9f, 0.1f, 1f)
 
@@ -103,9 +115,9 @@ private fun MainApp() {
         listOf(
             TabItem("home", "Home", Icons.Rounded.Home),
             TabItem("discover", "Discover", Icons.Rounded.Explore),
-            TabItem("search", "Search", Icons.Rounded.Search),
             TabItem("downloads", "Downloads", Icons.Rounded.Download),
             TabItem("addons", "Add-ons", Icons.Rounded.Extension),
+            TabItem("settings", "Settings", Icons.Rounded.Settings),
         )
     }
     val tabIndex = tabs.indexOfFirst { it.route == route }
@@ -122,79 +134,121 @@ private fun MainApp() {
         nav.navigate("detail/${Uri.encode(type)}/${Uri.encode(id)}")
     }
 
-    Box(Modifier.fillMaxSize()) {
-        AuroraBackground()
+    // Search opens over a blurred Home. The query is kept here so it's still there after
+    // opening a result and coming back.
+    var searchOpen by rememberSaveable { mutableStateOf(false) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    val searching = searchOpen && route == "home"
+    val blur by animateDpAsState(if (searching) 26.dp else 0.dp, tween(320), label = "searchBlur")
 
-        NavHost(
-            navController = nav,
-            startDestination = "home",
-            enterTransition = { fadeIn(tween(280)) + scaleIn(tween(380, easing = IosEase), initialScale = 0.97f) },
-            exitTransition = { fadeOut(tween(160)) },
-            popEnterTransition = { fadeIn(tween(280)) },
-            popExitTransition = { fadeOut(tween(160)) },
+    val haze = remember { HazeState() }
+
+    Box(Modifier.fillMaxSize()) {
+        // Everything under the tab bar is the source of its frosted blur.
+        Box(Modifier.fillMaxSize().hazeSource(haze)) {
+            AuroraBackground()
+
+            NavHost(
+                modifier = Modifier.fillMaxSize().blur(blur),
+                navController = nav,
+                startDestination = "home",
+                enterTransition = { fadeIn(tween(280)) + scaleIn(tween(380, easing = IosEase), initialScale = 0.97f) },
+                exitTransition = { fadeOut(tween(160)) },
+                popEnterTransition = { fadeIn(tween(280)) },
+                popExitTransition = { fadeOut(tween(160)) },
+            ) {
+                composable("home") {
+                    HomeScreen(
+                        onOpen = openDetail,
+                        onGoAddons = { selectTab("addons") },
+                        onOpenProfile = { nav.navigate("profile") },
+                        onOpenSearch = { searchOpen = true },
+                    )
+                }
+                composable("discover") {
+                    DiscoverScreen(onOpen = openDetail, onOpenFranchise = { nav.navigate("franchise/${Uri.encode(it)}") })
+                }
+                composable(
+                    route = "franchise/{id}",
+                    arguments = listOf(navArgument("id") { type = NavType.StringType }),
+                    enterTransition = {
+                        slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(420, easing = IosEase)) +
+                            fadeIn(tween(250))
+                    },
+                    exitTransition = { fadeOut(tween(200)) + scaleOut(tween(300), targetScale = 0.96f) },
+                    popEnterTransition = { fadeIn(tween(250)) + scaleIn(tween(300), initialScale = 0.96f) },
+                    popExitTransition = {
+                        slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(340, easing = IosEase)) +
+                            fadeOut(tween(300))
+                    },
+                ) { entry ->
+                    FranchiseScreen(
+                        id = entry.arguments?.getString("id").orEmpty(),
+                        onBack = { nav.popBackStack() },
+                        onOpen = openDetail,
+                    )
+                }
+                composable("settings") { SettingsScreen(onOpenProfile = { nav.navigate("profile") }) }
+                composable("downloads") { DownloadsScreen() }
+                composable("profile") { ProfileScreen(onBack = { nav.popBackStack() }, onOpen = openDetail) }
+                composable("addons") { AddonsScreen() }
+                composable(
+                    route = "detail/{type}/{id}",
+                    arguments = listOf(
+                        navArgument("type") { type = NavType.StringType },
+                        navArgument("id") { type = NavType.StringType },
+                    ),
+                    enterTransition = {
+                        slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(420, easing = IosEase)) +
+                            fadeIn(tween(250))
+                    },
+                    exitTransition = { fadeOut(tween(200)) + scaleOut(tween(300), targetScale = 0.96f) },
+                    popEnterTransition = { fadeIn(tween(250)) + scaleIn(tween(300), initialScale = 0.96f) },
+                    popExitTransition = {
+                        slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(340, easing = IosEase)) +
+                            fadeOut(tween(300))
+                    },
+                ) { entry ->
+                    DetailScreen(
+                        type = entry.arguments?.getString("type").orEmpty(),
+                        id = entry.arguments?.getString("id").orEmpty(),
+                        onBack = { nav.popBackStack() },
+                    )
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = searching,
+            enter = fadeIn(tween(220)),
+            exit = fadeOut(tween(200)),
         ) {
-            composable("home") {
-                HomeScreen(onOpen = openDetail, onGoAddons = { selectTab("addons") }, onOpenProfile = { nav.navigate("profile") })
-            }
-            composable("discover") {
-                DiscoverScreen(onOpen = openDetail, onOpenFranchise = { nav.navigate("franchise/${Uri.encode(it)}") })
-            }
-            composable(
-                route = "franchise/{id}",
-                arguments = listOf(navArgument("id") { type = NavType.StringType }),
-                enterTransition = {
-                    slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(420, easing = IosEase)) +
-                        fadeIn(tween(250))
-                },
-                exitTransition = { fadeOut(tween(200)) + scaleOut(tween(300), targetScale = 0.96f) },
-                popEnterTransition = { fadeIn(tween(250)) + scaleIn(tween(300), initialScale = 0.96f) },
-                popExitTransition = {
-                    slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(340, easing = IosEase)) +
-                        fadeOut(tween(300))
-                },
-            ) { entry ->
-                FranchiseScreen(
-                    id = entry.arguments?.getString("id").orEmpty(),
-                    onBack = { nav.popBackStack() },
+            val palette = LocalPalette.current
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    // Blur needs Android 12; older phones get a stronger veil instead.
+                    .background(palette.background.copy(alpha = if (Build.VERSION.SDK_INT >= 31) 0.45f else 0.9f))
+            ) {
+                SearchOverlay(
+                    query = searchQuery,
+                    onQueryChange = { searchQuery = it },
                     onOpen = openDetail,
-                )
-            }
-            composable("search") { SearchScreen(onOpen = openDetail) }
-            composable("downloads") { DownloadsScreen() }
-            composable("profile") { ProfileScreen(onBack = { nav.popBackStack() }, onOpen = openDetail) }
-            composable("addons") { AddonsScreen() }
-            composable(
-                route = "detail/{type}/{id}",
-                arguments = listOf(
-                    navArgument("type") { type = NavType.StringType },
-                    navArgument("id") { type = NavType.StringType },
-                ),
-                enterTransition = {
-                    slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(420, easing = IosEase)) +
-                        fadeIn(tween(250))
-                },
-                exitTransition = { fadeOut(tween(200)) + scaleOut(tween(300), targetScale = 0.96f) },
-                popEnterTransition = { fadeIn(tween(250)) + scaleIn(tween(300), initialScale = 0.96f) },
-                popExitTransition = {
-                    slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(340, easing = IosEase)) +
-                        fadeOut(tween(300))
-                },
-            ) { entry ->
-                DetailScreen(
-                    type = entry.arguments?.getString("type").orEmpty(),
-                    id = entry.arguments?.getString("id").orEmpty(),
-                    onBack = { nav.popBackStack() },
+                    onClose = {
+                        searchOpen = false
+                        searchQuery = ""
+                    },
                 )
             }
         }
 
         AnimatedVisibility(
-            visible = tabIndex >= 0,
+            visible = tabIndex >= 0 && !searching,
             modifier = Modifier.align(Alignment.BottomCenter),
             enter = slideInVertically(tween(380, easing = IosEase)) { it } + fadeIn(),
             exit = slideOutVertically(tween(260)) { it } + fadeOut(tween(200)),
         ) {
-            GlassTabBar(tabs, tabIndex.coerceAtLeast(0)) { i -> selectTab(tabs[i].route) }
+            GlassTabBar(tabs, tabIndex.coerceAtLeast(0), onSelect = { i -> selectTab(tabs[i].route) }, backdrop = Modifier.frostedBackdrop(haze))
         }
     }
 }
@@ -212,7 +266,7 @@ private fun UpdateDialog() {
         else -> null
     } ?: return
     GlassDialog(onDismiss = { if (s !is UpdateState.Downloading) Graph.updater.dismiss() }) {
-        Text("Update available", style = GlassType.title3, color = Color.White)
+        Text("Update available", style = GlassType.title3, color = Ink)
         Text(
             "${release.name} is ready. You have ${Graph.updater.currentName}.",
             style = GlassType.subhead,
@@ -272,7 +326,7 @@ private fun CrashReportDialog() {
         report = null
     }
     GlassDialog(onDismiss = dismiss) {
-        Text("GlassPlay closed unexpectedly", style = GlassType.title3, color = Color.White)
+        Text("GlassPlay closed unexpectedly", style = GlassType.title3, color = Ink)
         Spacer(Modifier.height(6.dp))
         Text(
             "Sorry about that. Copy the details below and share them so the problem can be fixed.",

@@ -109,6 +109,8 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
+    // Frosted-glass blur of the content behind bars.
+    implementation("dev.chrisbanes.haze:haze:1.2.2")
 
     // Accounts and synced watch history.
     implementation(platform("com.google.firebase:firebase-bom:33.7.0"))

@@ -7,11 +7,12 @@ An Android media center with a glass-style interface and a plug-in system compat
 - **Accounts:** sign in with email and password or with Google (Firebase). Your profile and watch history are saved to your account.
 - **Profile:** movies and TV shows watched and hours watched (today, yesterday, this week, month, year or all time), episodes watched, and your Watching / Finished / Dropped titles. Mark any movie, show or episode by hand.
 - **Updates:** the app offers new releases when it opens, and downloads and installs them.
+- **Settings:** light, dark or system theme, and subtitle colour, background and size.
 
 - **Home:** featured carousel, Continue Watching with progress, and rows from your add-ons' catalogs.
 - **Discover:** Movies and TV Shows tabs, catalog and genre filters, infinite scrolling, plus built-in catalogs for streaming services (Netflix, Prime Video, JioHotstar, Disney+, HBO Max, Apple TV+, ZEE5, Sony LIV and more).
 - **Franchises:** Marvel, DC, Harry Potter, Star Wars, Bond, Fast & Furious and 40+ other franchises, each with every movie in release order.
-- **Search** across every installed add-on that supports it, with recent searches.
+- **Search** from the bar on Home: the page blurs and shows recent searches, then results from every add-on that supports search.
 - **Details:** artwork, rating, cast, trailer, and a season and episode picker that marks watched episodes.
 - **Downloads:** save torrent or direct-link streams to the device and watch them offline. Torrent downloads keep going in the background, and a torrent can be played while it's still downloading.
 - **Player:** resumes exactly where you stopped. Fit, zoom or stretch the video with the size button or by pinching. A loading screen with the title's artwork shows peers and speed while a torrent starts. Supports direct video links, HLS, DASH and torrents, with subtitles from your add-ons and software decoding for AC3/DTS/TrueHD audio. Streams can also be opened in another player app.

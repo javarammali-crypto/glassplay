@@ -31,8 +31,10 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.DoneAll
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.RemoveDone
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -77,8 +79,10 @@ import com.glassplay.app.ui.components.formatDuration
 import com.glassplay.app.ui.components.noRippleClick
 import com.glassplay.app.ui.theme.Background
 import com.glassplay.app.ui.theme.Danger
+import com.glassplay.app.ui.theme.ForceDark
 import com.glassplay.app.ui.theme.GlassType
 import com.glassplay.app.ui.theme.StarYellow
+import com.glassplay.app.ui.theme.TextPrimary
 import com.glassplay.app.ui.theme.TextSecondary
 import com.glassplay.app.ui.theme.TextTertiary
 import com.glassplay.app.ui.theme.glass
@@ -88,8 +92,14 @@ data class StreamTarget(val meta: MetaDetail, val video: Video?) {
     val videoId: String get() = video?.id ?: meta.id
 }
 
+/** Title pages are built around the artwork, so they stay dark in light mode too. */
 @Composable
 fun DetailScreen(type: String, id: String, onBack: () -> Unit) {
+    ForceDark { DetailPage(type, id, onBack) }
+}
+
+@Composable
+private fun DetailPage(type: String, id: String, onBack: () -> Unit) {
     val addons by Graph.addons.installed.collectAsState()
     val meta by produceState<Loadable<MetaDetail>>(Loadable.Loading, type, id, addons.size) {
         value = try {
@@ -142,6 +152,7 @@ private fun DetailContent(meta: MetaDetail, onPlay: (StreamTarget) -> Unit) {
     val trackedTitles by Graph.tracker.titles.collectAsState()
     val status = remember(trackedTitles, trackedVideos, meta.id) { Graph.tracker.statusOf(meta.id) }
     var statusMenu by remember { mutableStateOf(false) }
+    var episodeMenu by remember { mutableStateOf<Video?>(null) }
     // Keep the episode count and "ended" up to date for the profile's statuses.
     LaunchedEffect(meta, trackedTitles.containsKey(meta.id)) { Graph.tracker.describe(meta) }
 
@@ -249,7 +260,7 @@ private fun DetailContent(meta: MetaDetail, onPlay: (StreamTarget) -> Unit) {
 
             if (meta.isSeries) {
                 item(key = "ep-title") {
-                    SectionHeader("Episodes", subtitle = if (Graph.accounts.enabled) "Long-press to mark watched" else null)
+                    SectionHeader("Episodes", subtitle = if (Graph.accounts.enabled) "Hold an episode for more" else null)
                 }
                 if (seasons.size > 1) {
                     item(key = "seasons") {
@@ -276,14 +287,7 @@ private fun DetailContent(meta: MetaDetail, onPlay: (StreamTarget) -> Unit) {
                         progressMap[v.id],
                         watched = watched,
                         isNext = v.id == nextVideo?.id,
-                        onLongClick = {
-                            Graph.tracker.markVideo(meta, v, !watched)
-                            Toast.makeText(
-                                context,
-                                if (watched) "Marked as not watched" else "Marked as watched",
-                                Toast.LENGTH_SHORT,
-                            ).show()
-                        },
+                        onLongClick = { episodeMenu = v },
                     ) { onPlay(StreamTarget(meta, v)) }
                 }
             }
@@ -292,6 +296,74 @@ private fun DetailContent(meta: MetaDetail, onPlay: (StreamTarget) -> Unit) {
 
     if (statusMenu) {
         StatusDialog(meta, status, onDismiss = { statusMenu = false })
+    }
+    episodeMenu?.let { v ->
+        val watched = progressMap[v.id]?.completed == true || (trackedVideos[v.id]?.completions ?: 0) > 0
+        EpisodeDialog(
+            video = v,
+            watched = watched,
+            onPlay = { onPlay(StreamTarget(meta, v)) },
+            onMark = { Graph.tracker.markVideo(meta, v, !watched) },
+            // Every released episode before this one in watching order, plus this one.
+            onMarkUpTo = {
+                val upTo = episodes.filter { (it.season ?: 0) > 0 }
+                val index = upTo.indexOfFirst { it.id == v.id }
+                if (index >= 0) Graph.tracker.markVideosWatched(meta, upTo.take(index + 1))
+            },
+            onDismiss = { episodeMenu = null },
+        )
+    }
+}
+
+@Composable
+private fun EpisodeDialog(
+    video: Video,
+    watched: Boolean,
+    onPlay: () -> Unit,
+    onMark: () -> Unit,
+    onMarkUpTo: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    GlassDialog(onDismiss = onDismiss) {
+        Text(
+            listOfNotNull(video.label, video.title.ifBlank { null }).joinToString(" · "),
+            style = GlassType.title3,
+            color = TextPrimary,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(if (watched) "Watched" else "Not watched yet", style = GlassType.footnote, color = TextSecondary)
+        Spacer(Modifier.height(16.dp))
+        GlassButton(
+            "Play",
+            icon = Icons.Rounded.PlayArrow,
+            primary = true,
+            onClick = { onDismiss(); onPlay() },
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        )
+        if (Graph.accounts.enabled) {
+            GlassButton(
+                if (watched) "Mark as not watched" else "Mark as watched",
+                icon = if (watched) Icons.Rounded.RemoveDone else Icons.Rounded.CheckCircle,
+                onClick = {
+                    onDismiss()
+                    onMark()
+                    Toast.makeText(context, if (watched) "Marked as not watched" else "Marked as watched", Toast.LENGTH_SHORT).show()
+                },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            )
+            GlassButton(
+                "Mark all up to here as watched",
+                icon = Icons.Rounded.DoneAll,
+                onClick = {
+                    onDismiss()
+                    onMarkUpTo()
+                    Toast.makeText(context, "Marked earlier episodes as watched", Toast.LENGTH_SHORT).show()
+                },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            )
+        }
     }
 }
 

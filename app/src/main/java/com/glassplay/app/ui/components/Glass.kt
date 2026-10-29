@@ -1,5 +1,7 @@
 package com.glassplay.app.ui.components
 
+import android.os.Build
+import android.view.WindowManager
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
@@ -56,6 +58,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -65,12 +70,20 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogWindowProvider
 import com.glassplay.app.ui.theme.Accent
 import com.glassplay.app.ui.theme.GlassType
+import com.glassplay.app.ui.theme.Ink
+import com.glassplay.app.ui.theme.InkInverse
+import com.glassplay.app.ui.theme.LocalPalette
 import com.glassplay.app.ui.theme.TextSecondary
 import com.glassplay.app.ui.theme.TextTertiary
 import com.glassplay.app.ui.theme.glass
 import com.glassplay.app.ui.theme.glassDark
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
 
 /** Loading state for anything fetched from an add-on. */
 sealed interface Loadable<out T> {
@@ -88,6 +101,7 @@ fun Modifier.bounceClick(
 ): Modifier = composed {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
+    val haptics = LocalHapticFeedback.current
     val scale by animateFloatAsState(
         targetValue = if (pressed) pressedScale else 1f,
         animationSpec = spring(dampingRatio = 0.55f, stiffness = 520f),
@@ -98,8 +112,17 @@ fun Modifier.bounceClick(
         .combinedClickable(
             interactionSource = interaction,
             indication = null,
-            onLongClick = onLongClick,
-            onClick = onClick,
+            onLongClick = onLongClick?.let { long ->
+                {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    long()
+                }
+            },
+            onClick = {
+                // A light tick, like iOS, so taps feel physical.
+                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onClick()
+            },
         )
 }
 
@@ -114,7 +137,7 @@ fun GlassIconButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     size: Int = 44,
-    tint: Color = Color.White,
+    tint: Color = Ink,
 ) {
     Box(
         modifier
@@ -137,13 +160,13 @@ fun GlassButton(
     enabled: Boolean = true,
     contentColor: Color? = null,
 ) {
-    val fg = contentColor ?: if (primary) Color.Black else Color.White
+    val fg = contentColor ?: if (primary) InkInverse else Ink
     Row(
         modifier
             .bounceClick(onClick = { if (enabled) onClick() })
             .height(48.dp)
             .then(
-                if (primary) Modifier.clip(CircleShape).background(Color.White.copy(alpha = if (enabled) 1f else 0.5f))
+                if (primary) Modifier.clip(CircleShape).background(Ink.copy(alpha = if (enabled) 1f else 0.5f))
                 else Modifier.glass(CircleShape)
             )
             .padding(horizontal = 20.dp),
@@ -166,14 +189,14 @@ fun GlassChip(text: String, selected: Boolean, onClick: () -> Unit, modifier: Mo
             .bounceClick(0.92f, onClick = onClick)
             .height(36.dp)
             .glass(CircleShape, strength = 0.9f)
-            .background(Color.White.copy(alpha = 0.92f * bgAlpha), CircleShape)
+            .background(Ink.copy(alpha = 0.92f * bgAlpha), CircleShape)
             .padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text,
             style = GlassType.footnote,
-            color = if (selected) Color.Black else Color.White,
+            color = if (selected) InkInverse else Ink,
             maxLines = 1,
         )
     }
@@ -197,8 +220,8 @@ fun GlassSegmented(options: List<String>, selected: Int, onSelect: (Int) -> Unit
                 .fillMaxHeight()
                 .shadow(6.dp, CircleShape)
                 .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.26f))
-                .border(0.5.dp, Color.White.copy(alpha = 0.45f), CircleShape)
+                .background(Ink.copy(alpha = 0.26f))
+                .border(0.5.dp, Ink.copy(alpha = 0.45f), CircleShape)
         )
         Row(Modifier.fillMaxSize()) {
             options.forEachIndexed { i, label ->
@@ -209,7 +232,7 @@ fun GlassSegmented(options: List<String>, selected: Int, onSelect: (Int) -> Unit
                         .noRippleClick { onSelect(i) },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(label, style = GlassType.callout, color = if (i == selected) Color.White else TextSecondary)
+                    Text(label, style = GlassType.callout, color = if (i == selected) Ink else TextSecondary)
                 }
             }
         }
@@ -233,7 +256,7 @@ fun LargeTitle(
             Text(caption.uppercase(), style = GlassType.caption, color = TextSecondary)
             Spacer(Modifier.height(2.dp))
         }
-        Text(title, style = GlassType.largeTitle, color = Color.White)
+        Text(title, style = GlassType.largeTitle, color = Ink)
     }
 }
 
@@ -243,7 +266,7 @@ fun SectionHeader(title: String, subtitle: String? = null, modifier: Modifier = 
         modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 22.dp, bottom = 10.dp),
         verticalAlignment = Alignment.Bottom,
     ) {
-        Text(title, style = GlassType.title3, color = Color.White, modifier = Modifier.weight(1f, fill = false))
+        Text(title, style = GlassType.title3, color = Ink, modifier = Modifier.weight(1f, fill = false))
         if (subtitle != null) {
             Spacer(Modifier.width(8.dp))
             Text(subtitle, style = GlassType.footnote, color = TextTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -252,12 +275,12 @@ fun SectionHeader(title: String, subtitle: String? = null, modifier: Modifier = 
 }
 
 @Composable
-fun ProgressLine(fraction: Float, modifier: Modifier = Modifier, color: Color = Color.White) {
+fun ProgressLine(fraction: Float, modifier: Modifier = Modifier, color: Color = Ink) {
     Box(
         modifier
             .height(4.dp)
             .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.22f))
+            .background(Ink.copy(alpha = 0.22f))
     ) {
         Box(
             Modifier
@@ -274,15 +297,15 @@ fun ProgressLine(fraction: Float, modifier: Modifier = Modifier, color: Color = 
 fun Placeholder(modifier: Modifier = Modifier, shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(16.dp)) {
     val t = rememberInfiniteTransition(label = "ph")
     val a by t.animateFloat(0.05f, 0.12f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "pha")
-    Box(modifier.clip(shape).background(Color.White.copy(alpha = a)))
+    Box(modifier.clip(shape).background(Ink.copy(alpha = a)))
 }
 
 @Composable
 fun Spinner(modifier: Modifier = Modifier, size: Int = 26) {
     CircularProgressIndicator(
         modifier = modifier.size(size.dp),
-        color = Color.White,
-        trackColor = Color.White.copy(alpha = 0.12f),
+        color = Ink,
+        trackColor = Ink.copy(alpha = 0.12f),
         strokeWidth = 2.5.dp,
     )
 }
@@ -290,6 +313,16 @@ fun Spinner(modifier: Modifier = Modifier, size: Int = 26) {
 @Composable
 fun GlassDialog(onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
+        // Blur the screen behind the dialog (Android 12 and newer).
+        val view = LocalView.current
+        LaunchedEffect(view) {
+            val window = (view.parent as? DialogWindowProvider)?.window
+            if (window != null && Build.VERSION.SDK_INT >= 31) {
+                window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                window.attributes = window.attributes.apply { blurBehindRadius = 48 }
+                window.setDimAmount(0.25f)
+            }
+        }
         val scale = remember { Animatable(0.9f) }
         LaunchedEffect(Unit) { scale.animateTo(1f, spring(dampingRatio = 0.62f, stiffness = 480f)) }
         Column(
@@ -320,7 +353,7 @@ fun GlassTextField(
         value = value,
         onValueChange = onValueChange,
         singleLine = true,
-        textStyle = GlassType.body.copy(color = Color.White),
+        textStyle = GlassType.body.copy(color = Ink),
         cursorBrush = SolidColor(Accent),
         keyboardOptions = KeyboardOptions(imeAction = imeAction, keyboardType = keyboardType),
         keyboardActions = KeyboardActions(onAny = { onSubmit() }),
@@ -360,7 +393,13 @@ data class TabItem(val route: String, val label: String, val icon: ImageVector)
 
 /** Floating glass tab bar with a sliding highlight. */
 @Composable
-fun GlassTabBar(tabs: List<TabItem>, selected: Int, onSelect: (Int) -> Unit) {
+fun GlassTabBar(
+    tabs: List<TabItem>,
+    selected: Int,
+    onSelect: (Int) -> Unit,
+    /** Draws the blurred content behind the bar; see [Modifier.frostedBackdrop]. */
+    backdrop: Modifier = Modifier,
+) {
     Box(
         Modifier
             .fillMaxWidth()
@@ -372,7 +411,9 @@ fun GlassTabBar(tabs: List<TabItem>, selected: Int, onSelect: (Int) -> Unit) {
                 .fillMaxWidth()
                 .height(66.dp)
                 .shadow(28.dp, CircleShape, ambientColor = Color.Black, spotColor = Color.Black)
-                .glassDark(CircleShape)
+                .clip(CircleShape)
+                .then(backdrop)
+                .glass(CircleShape, strength = 0.9f)
                 .padding(5.dp)
         ) {
             val itemWidth = maxWidth / tabs.size
@@ -383,14 +424,14 @@ fun GlassTabBar(tabs: List<TabItem>, selected: Int, onSelect: (Int) -> Unit) {
                     .width(itemWidth)
                     .fillMaxHeight()
                     .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.15f))
-                    .border(0.5.dp, Color.White.copy(alpha = 0.25f), CircleShape)
+                    .background(Ink.copy(alpha = 0.15f))
+                    .border(0.5.dp, Ink.copy(alpha = 0.25f), CircleShape)
             )
             Row(Modifier.fillMaxSize()) {
                 tabs.forEachIndexed { i, tab ->
                     val isSel = i == selected
                     val scale by animateFloatAsState(if (isSel) 1.1f else 1f, spring(dampingRatio = 0.45f, stiffness = 420f), label = "tabScale")
-                    val tint = if (isSel) Color.White else Color.White.copy(alpha = 0.55f)
+                    val tint = if (isSel) Ink else Ink.copy(alpha = 0.55f)
                     Column(
                         Modifier
                             .weight(1f)
@@ -419,4 +460,21 @@ fun formatDuration(ms: Long): String {
     val h = totalMin / 60
     val m = totalMin % 60
     return if (h > 0) "${h}h ${m}m" else "${m}m"
+}
+
+/**
+ * Real frosted glass: blurs whatever scrolls behind this element. The content behind must be
+ * marked with `hazeSource` on the same [state]. Android 12+ blurs; older phones get a tint.
+ */
+fun Modifier.frostedBackdrop(state: HazeState): Modifier = composed {
+    val p = LocalPalette.current
+    hazeEffect(
+        state,
+        HazeStyle(
+            backgroundColor = p.background,
+            tint = HazeTint(p.bar.copy(alpha = if (p.isDark) 0.45f else 0.55f)),
+            blurRadius = 26.dp,
+            noiseFactor = 0.08f,
+        ),
+    )
 }

@@ -50,6 +50,7 @@ import com.glassplay.app.ui.components.LargeTitle
 import com.glassplay.app.ui.components.ProgressLine
 import com.glassplay.app.ui.theme.Danger
 import com.glassplay.app.ui.theme.GlassType
+import com.glassplay.app.ui.theme.Ink
 import com.glassplay.app.ui.theme.TextSecondary
 import com.glassplay.app.ui.theme.TextTertiary
 import com.glassplay.app.ui.theme.glass
@@ -76,7 +77,7 @@ fun DownloadsScreen() {
                         .glass(RoundedCornerShape(26.dp))
                         .padding(20.dp)
                 ) {
-                    Text("No downloads yet", style = GlassType.headline, color = Color.White)
+                    Text("No downloads yet", style = GlassType.headline, color = Ink)
                     Spacer(Modifier.height(4.dp))
                     Text(
                         "When you choose a stream, tap its download button to save the video and watch it later without an internet connection.",
@@ -89,6 +90,7 @@ fun DownloadsScreen() {
 
         items(sorted, key = { it.id }) { item ->
             DownloadRow(
+                modifier = Modifier.animateItem(),
                 item = item,
                 onPlay = {
                     if (!playDownload(context, item)) {
@@ -103,7 +105,7 @@ fun DownloadsScreen() {
 
     confirmDelete?.let { item ->
         GlassDialog(onDismiss = { confirmDelete = null }) {
-            Text(if (item.state == DownloadState.DONE) "Delete download?" else "Cancel download?", style = GlassType.title3, color = Color.White)
+            Text(if (item.state == DownloadState.DONE) "Delete download?" else "Cancel download?", style = GlassType.title3, color = Ink)
             Spacer(Modifier.height(6.dp))
             Text(
                 "${listOfNotNull(item.name, item.episodeLabel).joinToString(" · ")} will be removed from this device.",
@@ -129,10 +131,10 @@ fun DownloadsScreen() {
 }
 
 @Composable
-private fun DownloadRow(item: DownloadItem, onPlay: () -> Unit, onRetry: () -> Unit, onDelete: () -> Unit) {
+private fun DownloadRow(item: DownloadItem, onPlay: () -> Unit, onRetry: () -> Unit, onDelete: () -> Unit, modifier: Modifier = Modifier) {
     val canPlay = item.state == DownloadState.DONE || (item.isTorrent && item.state == DownloadState.DOWNLOADING)
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 6.dp)
             .glass(RoundedCornerShape(22.dp))
@@ -144,7 +146,7 @@ private fun DownloadRow(item: DownloadItem, onPlay: () -> Unit, onRetry: () -> U
                 .width(104.dp)
                 .height(60.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .background(Color.White.copy(alpha = 0.06f))
+                .background(Ink.copy(alpha = 0.06f))
         ) {
             AsyncImage(
                 model = item.background ?: item.poster,
@@ -155,7 +157,7 @@ private fun DownloadRow(item: DownloadItem, onPlay: () -> Unit, onRetry: () -> U
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(item.name, style = GlassType.headline, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(item.name, style = GlassType.headline, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val sub = listOfNotNull(item.episodeLabel, item.episodeTitle?.takeIf { it.isNotBlank() }, item.streamTitle).joinToString(" · ")
             if (sub.isNotEmpty()) {
                 Text(sub, style = GlassType.caption, color = TextTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)

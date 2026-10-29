@@ -48,6 +48,7 @@ import com.glassplay.app.ui.components.noRippleClick
 import com.glassplay.app.ui.theme.AuroraBackground
 import com.glassplay.app.ui.theme.Danger
 import com.glassplay.app.ui.theme.GlassType
+import com.glassplay.app.ui.theme.Ink
 import com.glassplay.app.ui.theme.TextSecondary
 import com.glassplay.app.ui.theme.glass
 import kotlinx.coroutines.launch
@@ -105,7 +106,7 @@ fun AuthScreen() {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(Modifier.height(36.dp))
-            Text("GlassPlay", style = GlassType.largeTitle, color = Color.White)
+            Text("GlassPlay", style = GlassType.largeTitle, color = Ink)
             Spacer(Modifier.height(6.dp))
             Text(
                 "Sign in to keep your watch history and profile with you.",

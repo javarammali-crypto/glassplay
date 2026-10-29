@@ -55,6 +55,7 @@ import com.glassplay.app.ui.components.Spinner
 import com.glassplay.app.ui.components.noRippleClick
 import com.glassplay.app.ui.theme.Danger
 import com.glassplay.app.ui.theme.GlassType
+import com.glassplay.app.ui.theme.Ink
 import com.glassplay.app.ui.theme.TextSecondary
 import com.glassplay.app.ui.theme.TextTertiary
 import com.glassplay.app.ui.theme.glass
@@ -102,7 +103,7 @@ fun AddonsScreen() {
                     .glass(RoundedCornerShape(26.dp))
                     .padding(18.dp)
             ) {
-                Text("Install from a link", style = GlassType.headline, color = Color.White)
+                Text("Install from a link", style = GlassType.headline, color = Ink)
                 Spacer(Modifier.height(4.dp))
                 Text(
                     "Paste an add-on's manifest link. Add-ons built for Stremio work here too.",
@@ -190,7 +191,7 @@ fun AddonsScreen() {
 
     removeTarget?.let { a ->
         GlassDialog(onDismiss = { removeTarget = null }) {
-            Text("Remove ${a.manifest.name}?", style = GlassType.title3, color = Color.White)
+            Text("Remove ${a.manifest.name}?", style = GlassType.title3, color = Ink)
             Spacer(Modifier.height(6.dp))
             Text(
                 "Its catalogs and streams will disappear from GlassPlay. You can install it again any time.",
@@ -234,7 +235,7 @@ private fun AddonHeader(a: InstalledAddon) {
         AddonLogo(a, 52)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(a.manifest.name, style = GlassType.title3, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(a.manifest.name, style = GlassType.title3, color = Ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (a.manifest.version.isNotEmpty()) {
                 Text("Version ${a.manifest.version}", style = GlassType.footnote, color = TextTertiary)
             }
@@ -249,13 +250,13 @@ private fun AddonLogo(a: InstalledAddon, size: Int) {
         Modifier
             .size(size.dp)
             .clip(shape)
-            .background(Color.White.copy(alpha = 0.1f)),
+            .background(Ink.copy(alpha = 0.1f)),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             a.manifest.name.take(1).uppercase(),
             style = GlassType.title2,
-            color = Color.White,
+            color = Ink,
         )
         if (a.manifest.logo != null) {
             AsyncImage(
@@ -285,7 +286,7 @@ private fun AddonCard(addon: InstalledAddon, canMoveUp: Boolean, onMoveUp: () ->
                 Text(
                     addon.manifest.name,
                     style = GlassType.headline,
-                    color = Color.White,
+                    color = Ink,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
@@ -305,7 +306,7 @@ private fun AddonCard(addon: InstalledAddon, canMoveUp: Boolean, onMoveUp: () ->
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             if (canMoveUp) {
                 SmallRoundButton(onMoveUp) {
-                    Icon(Icons.Rounded.KeyboardArrowUp, "Move up", tint = Color.White, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Rounded.KeyboardArrowUp, "Move up", tint = Ink, modifier = Modifier.size(20.dp))
                 }
                 Spacer(Modifier.height(6.dp))
             }

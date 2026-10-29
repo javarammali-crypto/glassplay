@@ -58,6 +58,8 @@ import com.glassplay.app.ui.components.PosterCard
 import com.glassplay.app.ui.components.Spinner
 import com.glassplay.app.ui.components.bounceClick
 import com.glassplay.app.ui.theme.GlassType
+import com.glassplay.app.ui.theme.Ink
+import com.glassplay.app.ui.theme.InkInverse
 import com.glassplay.app.ui.theme.TextSecondary
 import com.glassplay.app.ui.theme.TextTertiary
 import com.glassplay.app.ui.theme.glass
@@ -249,7 +251,7 @@ fun DiscoverScreen(onOpen: (String, String) -> Unit, onOpenFranchise: (String) -
         } else if (current == null) {
             item(key = "none", span = { GridItemSpan(maxLineSpan) }) {
                 Column(Modifier.fillMaxWidth().padding(vertical = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Nothing to browse", style = GlassType.title3, color = Color.White)
+                    Text("Nothing to browse", style = GlassType.title3, color = Ink)
                     Spacer(Modifier.height(6.dp))
                     Text(
                         "None of your add-ons offer a catalog for this category.",
@@ -299,12 +301,12 @@ private fun ServiceChip(name: String, color: Color, selected: Boolean, onClick: 
             .bounceClick(0.92f, onClick = onClick)
             .height(36.dp)
             .glass(CircleShape, strength = 0.9f)
-            .background(Color.White.copy(alpha = 0.92f * bgAlpha), CircleShape)
+            .background(Ink.copy(alpha = 0.92f * bgAlpha), CircleShape)
             .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(10.dp).clip(CircleShape).background(color))
         Spacer(Modifier.width(8.dp))
-        Text(name, style = GlassType.footnote, color = if (selected) Color.Black else Color.White, maxLines = 1)
+        Text(name, style = GlassType.footnote, color = if (selected) InkInverse else Ink, maxLines = 1)
     }
 }

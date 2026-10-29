@@ -4,6 +4,7 @@ import android.content.Context
 import com.glassplay.app.account.AccountRepository
 import com.glassplay.app.data.AddonClient
 import com.glassplay.app.data.AddonRepository
+import com.glassplay.app.data.AppSettings
 import com.glassplay.app.data.AppUpdater
 import com.glassplay.app.data.DownloadRepository
 import com.glassplay.app.data.FranchiseRepository
@@ -40,9 +41,12 @@ object Graph {
         private set
     lateinit var updater: AppUpdater
         private set
+    lateinit var settings: AppSettings
+        private set
 
     fun init(context: Context) {
         val prefs = context.getSharedPreferences("glassplay", Context.MODE_PRIVATE)
+        settings = AppSettings(prefs)
         client = AddonClient()
         addons = AddonRepository(prefs, client, appScope)
         history = WatchHistory(prefs)

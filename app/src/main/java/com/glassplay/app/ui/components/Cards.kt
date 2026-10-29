@@ -1,5 +1,7 @@
 package com.glassplay.app.ui.components
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -24,11 +26,16 @@ import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -37,6 +44,7 @@ import coil3.compose.AsyncImage
 import com.glassplay.app.data.MetaPreview
 import com.glassplay.app.data.WatchEntry
 import com.glassplay.app.ui.theme.GlassType
+import com.glassplay.app.ui.theme.Ink
 import com.glassplay.app.ui.theme.StarYellow
 import com.glassplay.app.ui.theme.TextSecondary
 import com.glassplay.app.ui.theme.TextTertiary
@@ -46,14 +54,17 @@ private val PosterShape = RoundedCornerShape(16.dp)
 
 @Composable
 fun PosterCard(item: MetaPreview, onClick: () -> Unit, modifier: Modifier = Modifier.width(116.dp)) {
+    // Posters fade and settle in as their image arrives instead of popping in.
+    var loaded by remember(item.poster) { mutableStateOf(false) }
+    val reveal by animateFloatAsState(if (loaded) 1f else 0f, tween(420), label = "poster")
     Column(modifier.bounceClick(onClick = onClick)) {
         Box(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(2f / 3f)
                 .clip(PosterShape)
-                .background(Color.White.copy(alpha = 0.06f))
-                .border(0.5.dp, Color.White.copy(alpha = 0.16f), PosterShape)
+                .background(Ink.copy(alpha = 0.06f))
+                .border(0.5.dp, Ink.copy(alpha = 0.16f), PosterShape)
         ) {
             if (item.poster == null) {
                 Text(
@@ -68,12 +79,18 @@ fun PosterCard(item: MetaPreview, onClick: () -> Unit, modifier: Modifier = Modi
                 model = item.poster,
                 contentDescription = item.name,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
+                onSuccess = { loaded = true },
+                modifier = Modifier.fillMaxSize().graphicsLayer {
+                    alpha = reveal
+                    val s = 1.06f - 0.06f * reveal
+                    scaleX = s
+                    scaleY = s
+                },
             )
             item.rating?.let { RatingBadge(it, Modifier.align(Alignment.TopEnd).padding(6.dp)) }
         }
         Spacer(Modifier.height(7.dp))
-        Text(item.name, style = GlassType.footnote, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(item.name, style = GlassType.footnote, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
         item.releaseInfo?.let {
             Text(it, style = GlassType.caption, color = TextTertiary, maxLines = 1)
         }
@@ -123,8 +140,8 @@ fun ContinueCard(entry: WatchEntry, onClick: () -> Unit, onLongClick: () -> Unit
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
                 .clip(shape)
-                .background(Color.White.copy(alpha = 0.06f))
-                .border(0.5.dp, Color.White.copy(alpha = 0.18f), shape)
+                .background(Ink.copy(alpha = 0.06f))
+                .border(0.5.dp, Ink.copy(alpha = 0.18f), shape)
         ) {
             AsyncImage(
                 model = entry.background ?: entry.poster,

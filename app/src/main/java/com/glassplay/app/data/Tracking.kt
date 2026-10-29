@@ -157,6 +157,12 @@ object Tracking {
     /** Minutes from runtimes like "152 min", "2h 32min" or "45m"; 0 if there's no number. */
     fun parseRuntimeMs(runtime: String?): Long {
         if (runtime.isNullOrBlank()) return 0
+        // ISO 8601 durations, like "PT2H32M".
+        Regex("^PT(?:(\\d+)H)?(?:(\\d+)M)?", RegexOption.IGNORE_CASE).find(runtime.trim())?.let { m ->
+            val h = m.groupValues[1].toLongOrNull() ?: 0
+            val min = m.groupValues[2].toLongOrNull() ?: 0
+            if (h + min > 0) return (h * 60 + min) * 60_000
+        }
         val hours = Regex("(\\d+)\\s*h").find(runtime)?.groupValues?.get(1)?.toLongOrNull() ?: 0
         val minutes = Regex("(\\d+)\\s*m").find(runtime)?.groupValues?.get(1)?.toLongOrNull()
             ?: if (hours == 0L) Regex("(\\d+)").find(runtime)?.groupValues?.get(1)?.toLongOrNull() ?: 0 else 0

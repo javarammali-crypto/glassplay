@@ -26,6 +26,7 @@ import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -70,6 +71,7 @@ import com.glassplay.app.ui.components.Spinner
 import com.glassplay.app.ui.components.bounceClick
 import com.glassplay.app.ui.theme.Danger
 import com.glassplay.app.ui.theme.GlassType
+import com.glassplay.app.ui.theme.Ink
 import com.glassplay.app.ui.theme.TextSecondary
 import com.glassplay.app.ui.theme.TextTertiary
 import com.glassplay.app.ui.theme.glass
@@ -78,7 +80,12 @@ import java.util.Calendar
 import kotlin.math.absoluteValue
 
 @Composable
-fun HomeScreen(onOpen: (String, String) -> Unit, onGoAddons: () -> Unit, onOpenProfile: () -> Unit) {
+fun HomeScreen(
+    onOpen: (String, String) -> Unit,
+    onGoAddons: () -> Unit,
+    onOpenProfile: () -> Unit,
+    onOpenSearch: () -> Unit,
+) {
     val context = LocalContext.current
     val addons by Graph.addons.installed.collectAsState()
     val ready by Graph.addons.ready.collectAsState()
@@ -115,6 +122,23 @@ fun HomeScreen(onOpen: (String, String) -> Unit, onGoAddons: () -> Unit, onOpenP
                             .bounceClick(0.9f, onClick = onOpenProfile),
                     )
                 }
+            }
+        }
+
+        item(key = "search") {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = 20.dp, end = 20.dp, bottom = 16.dp)
+                    .bounceClick(0.97f, onClick = onOpenSearch)
+                    .height(50.dp)
+                    .glass(RoundedCornerShape(18.dp))
+                    .padding(horizontal = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Rounded.Search, null, tint = TextSecondary, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(10.dp))
+                Text("Search movies, shows and more", style = GlassType.body, color = TextTertiary)
             }
         }
 
@@ -159,7 +183,7 @@ fun HomeScreen(onOpen: (String, String) -> Unit, onGoAddons: () -> Unit, onOpenP
 
     menuFor?.let { e ->
         GlassDialog(onDismiss = { menuFor = null }) {
-            Text(e.name, style = GlassType.title3, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(e.name, style = GlassType.title3, color = Ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
             e.episodeLabel?.let { Text(it, style = GlassType.subhead, color = TextSecondary) }
             Spacer(Modifier.height(18.dp))
             if (!e.completed && e.streamUrl != null) {
@@ -313,9 +337,9 @@ private fun EmptyHome(onGoAddons: () -> Unit) {
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(Icons.Rounded.Extension, null, tint = Color.White, modifier = Modifier.size(40.dp))
+        Icon(Icons.Rounded.Extension, null, tint = Ink, modifier = Modifier.size(40.dp))
         Spacer(Modifier.height(12.dp))
-        Text("No catalogs yet", style = GlassType.title3, color = Color.White)
+        Text("No catalogs yet", style = GlassType.title3, color = Ink)
         Spacer(Modifier.height(6.dp))
         Text(
             "Install an add-on with catalogs to fill your home screen.",

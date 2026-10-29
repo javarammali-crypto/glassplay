@@ -1,5 +1,6 @@
 package com.glassplay.app.ui.search
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -13,8 +14,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -34,6 +37,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
@@ -46,7 +51,6 @@ import com.glassplay.app.data.MetaPreview
 import com.glassplay.app.data.TYPE_MOVIE
 import com.glassplay.app.data.typeLabel
 import com.glassplay.app.ui.components.GlassTextField
-import com.glassplay.app.ui.components.LargeTitle
 import com.glassplay.app.ui.components.PosterRow
 import com.glassplay.app.ui.components.SectionHeader
 import com.glassplay.app.ui.components.Spinner
@@ -54,6 +58,7 @@ import com.glassplay.app.ui.components.bounceClick
 import com.glassplay.app.ui.components.noRippleClick
 import com.glassplay.app.ui.theme.Accent
 import com.glassplay.app.ui.theme.GlassType
+import com.glassplay.app.ui.theme.Ink
 import com.glassplay.app.ui.theme.TextSecondary
 import com.glassplay.app.ui.theme.TextTertiary
 import com.glassplay.app.ui.theme.glass
@@ -71,13 +76,24 @@ private sealed interface SearchState {
     data class Done(val query: String, val sections: List<SearchSection>) : SearchState
 }
 
+/**
+ * Search, opened from the bar on Home: it covers the blurred Home page and shows recent
+ * searches until something is typed.
+ */
 @Composable
-fun SearchScreen(onOpen: (String, String) -> Unit) {
+fun SearchOverlay(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onOpen: (String, String) -> Unit,
+    onClose: () -> Unit,
+) {
     val addons by Graph.addons.installed.collectAsState()
     val recents by Graph.recents.items.collectAsState()
     val focus = LocalFocusManager.current
 
-    var query by rememberSaveable { mutableStateOf("") }
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    BackHandler(onBack = onClose)
     var state by remember { mutableStateOf<SearchState>(SearchState.Idle) }
 
     val searchCatalogs = remember(addons) {
@@ -115,21 +131,40 @@ fun SearchScreen(onOpen: (String, String) -> Unit) {
         onOpen(item.type, item.id)
     }
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 130.dp)) {
-        item(key = "title") { LargeTitle("Search") }
+    LazyColumn(Modifier.fillMaxSize().imePadding(), contentPadding = PaddingValues(bottom = 40.dp)) {
         item(key = "field") {
-            GlassTextField(
-                value = query,
-                onValueChange = { query = it },
-                placeholder = "Movies, shows and more",
-                leading = Icons.Rounded.Search,
-                imeAction = ImeAction.Search,
-                onSubmit = {
-                    Graph.recents.add(query)
-                    focus.clearFocus()
-                },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-            )
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(start = 20.dp, end = 12.dp, top = 14.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                GlassTextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    placeholder = "Movies, shows and more",
+                    leading = Icons.Rounded.Search,
+                    imeAction = ImeAction.Search,
+                    onSubmit = {
+                        Graph.recents.add(query)
+                        focus.clearFocus()
+                    },
+                    modifier = Modifier.weight(1f).focusRequester(focusRequester),
+                )
+                Text(
+                    "Cancel",
+                    style = GlassType.callout,
+                    color = Accent,
+                    modifier = Modifier
+                        .padding(start = 4.dp)
+                        .noRippleClick {
+                            focus.clearFocus()
+                            onClose()
+                        }
+                        .padding(horizontal = 8.dp, vertical = 12.dp),
+                )
+            }
         }
 
         item(key = "body") {
@@ -143,13 +178,13 @@ fun SearchScreen(onOpen: (String, String) -> Unit) {
                     SearchState.Idle -> IdleContent(
                         hasSearchAddons = searchCatalogs.isNotEmpty(),
                         recents = recents,
-                        onPick = { query = it },
+                        onPick = onQueryChange,
                         onClear = { Graph.recents.clear() },
                     )
                     SearchState.Searching -> Box(Modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) { Spinner() }
                     is SearchState.Done -> if (s.sections.isEmpty()) {
                         Column(Modifier.fillMaxWidth().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("No results", style = GlassType.title3, color = Color.White)
+                            Text("No results", style = GlassType.title3, color = Ink)
                             Spacer(Modifier.height(6.dp))
                             Text("Nothing matched \"${s.query}\".", style = GlassType.subhead, color = TextSecondary)
                         }
@@ -189,7 +224,7 @@ private fun IdleContent(
             Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 22.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Recent", style = GlassType.title3, color = Color.White, modifier = Modifier.weight(1f))
+            Text("Recent", style = GlassType.title3, color = Ink, modifier = Modifier.weight(1f))
             Text("Clear", style = GlassType.callout, color = Accent, modifier = Modifier.noRippleClick(onClear))
         }
         Column(
@@ -209,7 +244,7 @@ private fun IdleContent(
                 ) {
                     Icon(Icons.Rounded.History, null, tint = TextTertiary, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(12.dp))
-                    Text(r, style = GlassType.body, color = Color.White)
+                    Text(r, style = GlassType.body, color = Ink)
                 }
             }
         }

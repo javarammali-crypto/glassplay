@@ -63,6 +63,7 @@ import com.glassplay.app.ui.theme.Accent
 import com.glassplay.app.ui.theme.AccentPurple
 import com.glassplay.app.ui.theme.Danger
 import com.glassplay.app.ui.theme.GlassType
+import com.glassplay.app.ui.theme.Ink
 import com.glassplay.app.ui.theme.TextSecondary
 import com.glassplay.app.ui.theme.TextTertiary
 import com.glassplay.app.ui.theme.glass
@@ -133,7 +134,7 @@ fun ProfileScreen(onBack: () -> Unit, onOpen: (String, String) -> Unit) {
                         Text(
                             profile?.fullName?.ifBlank { null } ?: "Your profile",
                             style = GlassType.title2,
-                            color = Color.White,
+                            color = Ink,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -196,7 +197,7 @@ fun ProfileScreen(onBack: () -> Unit, onOpen: (String, String) -> Unit) {
             }
         }
         items(shown, key = { it.metaId }) { t ->
-            TitleRow(t, upToDate = tab == 0 && Graph.tracker.statusOf(t.metaId, now) == WatchStatus.UP_TO_DATE) {
+            TitleRow(t, upToDate = tab == 0 && Graph.tracker.statusOf(t.metaId, now) == WatchStatus.UP_TO_DATE, modifier = Modifier.animateItem()) {
                 onOpen(t.type, t.metaId)
             }
         }
@@ -210,7 +211,7 @@ fun ProfileScreen(onBack: () -> Unit, onOpen: (String, String) -> Unit) {
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text("GlassPlay ${Graph.updater.currentName}", style = GlassType.headline, color = Color.White)
+                Text("GlassPlay ${Graph.updater.currentName}", style = GlassType.headline, color = Ink)
                 val status = when (val u = update) {
                     UpdateState.Checking -> "Checking for updates…"
                     UpdateState.UpToDate -> "You have the latest version."
@@ -231,7 +232,7 @@ fun ProfileScreen(onBack: () -> Unit, onOpen: (String, String) -> Unit) {
     }
     if (confirmSignOut) {
         GlassDialog(onDismiss = { confirmSignOut = false }) {
-            Text("Sign out?", style = GlassType.title3, color = Color.White)
+            Text("Sign out?", style = GlassType.title3, color = Ink)
             Spacer(Modifier.height(6.dp))
             Text("Your watch history stays in your account. Sign in again to see it.", style = GlassType.subhead, color = TextSecondary)
             Spacer(Modifier.height(18.dp))
@@ -261,14 +262,14 @@ private fun StatCard(title: String, stats: TypeStats, isShows: Boolean, modifier
     ) {
         Text(title.uppercase(), style = GlassType.caption, color = TextSecondary)
         Spacer(Modifier.height(6.dp))
-        Text("${stats.titles}", style = GlassType.largeTitle, color = Color.White)
+        Text("${stats.titles}", style = GlassType.largeTitle, color = Ink)
         Text(
             if (isShows) "show${if (stats.titles == 1) "" else "s"}" else "movie${if (stats.titles == 1) "" else "s"}",
             style = GlassType.footnote,
             color = TextSecondary,
         )
         Spacer(Modifier.height(10.dp))
-        Text(Tracking.formatHours(stats.seconds), style = GlassType.headline, color = Color.White)
+        Text(Tracking.formatHours(stats.seconds), style = GlassType.headline, color = Ink)
         Text("watched", style = GlassType.caption, color = TextTertiary)
         if (isShows) {
             Spacer(Modifier.height(6.dp))
@@ -278,9 +279,9 @@ private fun StatCard(title: String, stats: TypeStats, isShows: Boolean, modifier
 }
 
 @Composable
-private fun TitleRow(title: TitleRecord, upToDate: Boolean, onClick: () -> Unit) {
+private fun TitleRow(title: TitleRecord, upToDate: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 5.dp)
             .bounceClick(0.97f, onClick = onClick)
@@ -296,11 +297,11 @@ private fun TitleRow(title: TitleRecord, upToDate: Boolean, onClick: () -> Unit)
                 .width(44.dp)
                 .height(66.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(Color.White.copy(alpha = 0.06f)),
+                .background(Ink.copy(alpha = 0.06f)),
         )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(title.name, style = GlassType.callout, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(title.name, style = GlassType.callout, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val last = maxOf(title.lastActivity, title.manualStatusAt)
             val parts = listOfNotNull(
                 if (title.type == TYPE_MOVIE) "Movie" else "TV Show",
@@ -319,7 +320,7 @@ private fun EditNameDialog(profile: UserProfile?, onDismiss: () -> Unit) {
     var last by remember { mutableStateOf(profile?.lastName.orEmpty()) }
     var error by remember { mutableStateOf<String?>(null) }
     GlassDialog(onDismiss = onDismiss) {
-        Text("Your name", style = GlassType.title3, color = Color.White)
+        Text("Your name", style = GlassType.title3, color = Ink)
         Spacer(Modifier.height(12.dp))
         GlassTextField(first, { first = it }, "First name", modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(10.dp))

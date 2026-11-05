@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.FormatListBulleted
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -112,6 +113,9 @@ private fun DetailPage(type: String, id: String, onBack: () -> Unit) {
         }
     }
     var streamTarget by remember { mutableStateOf<StreamTarget?>(null) }
+    // With auto-pick on, Play finds and starts the best stream; the list stays one tap away.
+    var autoTarget by remember { mutableStateOf<StreamTarget?>(null) }
+    val autoPick by Graph.settings.autoPick.collectAsState()
 
     Box(Modifier.fillMaxSize().background(Background)) {
         when (val m = meta) {
@@ -126,7 +130,12 @@ private fun DetailPage(type: String, id: String, onBack: () -> Unit) {
                 Spacer(Modifier.height(16.dp))
                 GlassButton("Go back", onClick = onBack, primary = true)
             }
-            is Loadable.Ready -> DetailContent(m.data, onPlay = { streamTarget = it })
+            is Loadable.Ready -> DetailContent(
+                m.data,
+                autoPick = autoPick,
+                onPlay = { if (autoPick) autoTarget = it else streamTarget = it },
+                onChooseStream = { streamTarget = it },
+            )
         }
 
         GlassIconButton(
@@ -137,13 +146,28 @@ private fun DetailPage(type: String, id: String, onBack: () -> Unit) {
         )
     }
 
+    autoTarget?.let { target ->
+        AutoPickDialog(
+            target,
+            onChooseMyself = {
+                autoTarget = null
+                streamTarget = target
+            },
+            onDismiss = { autoTarget = null },
+        )
+    }
     streamTarget?.let { target ->
         StreamSheet(target, onDismiss = { streamTarget = null })
     }
 }
 
 @Composable
-private fun DetailContent(meta: MetaDetail, onPlay: (StreamTarget) -> Unit) {
+private fun DetailContent(
+    meta: MetaDetail,
+    autoPick: Boolean,
+    onPlay: (StreamTarget) -> Unit,
+    onChooseStream: (StreamTarget) -> Unit,
+) {
     val context = LocalContext.current
     val progressMap by Graph.history.videoProgress.collectAsState()
     val entries by Graph.history.entries.collectAsState()
@@ -197,6 +221,15 @@ private fun DetailContent(meta: MetaDetail, onPlay: (StreamTarget) -> Unit) {
                             onClick = { onPlay(StreamTarget(meta, nextVideo)) },
                             modifier = Modifier.weight(1f),
                         )
+                        if (autoPick) {
+                            Spacer(Modifier.width(10.dp))
+                            GlassIconButton(
+                                Icons.AutoMirrored.Rounded.FormatListBulleted,
+                                "Choose stream",
+                                { onChooseStream(StreamTarget(meta, nextVideo)) },
+                                size = 48,
+                            )
+                        }
                         meta.trailerYtId?.let { yt ->
                             Spacer(Modifier.width(10.dp))
                             GlassIconButton(Icons.Rounded.Movie, "Trailer", { openLink(context, "https://www.youtube.com/watch?v=$yt") }, size = 48)

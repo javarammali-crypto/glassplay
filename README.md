@@ -15,6 +15,7 @@ An Android media center with a glass-style interface and a plug-in system compat
 - **Search** from the bar on Home: the page blurs and shows recent searches, then results from every add-on that supports search.
 - **Details:** artwork, rating, cast, trailer, and a season and episode picker that marks watched episodes.
 - **Downloads:** save torrent or direct-link streams to the device and watch them offline. Torrent downloads keep going in the background, and a torrent can be played while it's still downloading.
+- **Smooth playback:** Play picks the stream most likely to play without buffering on your connection (quality, size, seeders, HDR support, language), with the full list one tap away; this can be turned off in Settings. Torrents buffer well ahead, and if a stream keeps stalling the player offers the next best one from the same spot.
 - **Player:** resumes exactly where you stopped. Fit, zoom or stretch the video with the size button or by pinching. A loading screen with the title's artwork shows peers and speed while a torrent starts. Supports direct video links, HLS, DASH and torrents, with subtitles from your add-ons and software decoding for AC3/DTS/TrueHD audio. Streams can also be opened in another player app.
 - **Add-ons:** install any Stremio add-on by pasting its manifest link (including configured links and `stremio://` links), reorder by priority, or remove.
 

@@ -49,6 +49,26 @@ class AppSettings(private val prefs: SharedPreferences) {
     )
     val subtitles: StateFlow<SubtitleStyle> = _subtitles
 
+    private val _autoPick = MutableStateFlow(prefs.getBoolean(KEY_AUTO_PICK, true))
+    /** Play picks the best stream by itself instead of showing the list. On by default. */
+    val autoPick: StateFlow<Boolean> = _autoPick
+
+    fun setAutoPick(on: Boolean) {
+        _autoPick.value = on
+        prefs.edit().putBoolean(KEY_AUTO_PICK, on).apply()
+    }
+
+    /** Download speed seen during recent playback, in Mbps; 0 until something has been measured. */
+    val measuredBandwidthMbps: Double get() = prefs.getFloat(KEY_BANDWIDTH, 0f).toDouble()
+
+    /** Folds a new measurement into the running estimate, so one odd reading doesn't swing it. */
+    fun recordBandwidth(mbps: Double) {
+        if (mbps <= 0.5 || mbps > 2000) return
+        val old = measuredBandwidthMbps
+        val next = if (old <= 0) mbps else old * 0.6 + mbps * 0.4
+        prefs.edit().putFloat(KEY_BANDWIDTH, next.toFloat()).apply()
+    }
+
     fun setTheme(mode: ThemeMode) {
         _theme.value = mode
         prefs.edit().putString(KEY_THEME, mode.name).apply()
@@ -65,6 +85,8 @@ class AppSettings(private val prefs: SharedPreferences) {
 
     private companion object {
         const val KEY_THEME = "theme_mode"
+        const val KEY_AUTO_PICK = "auto_pick_stream"
+        const val KEY_BANDWIDTH = "bandwidth_mbps"
         const val KEY_SUB_COLOR = "subtitle_color"
         const val KEY_SUB_BG = "subtitle_background"
         const val KEY_SUB_SIZE = "subtitle_size"

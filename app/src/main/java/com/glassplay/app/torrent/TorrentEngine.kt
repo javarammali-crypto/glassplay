@@ -274,7 +274,12 @@ class TorrentStream(
 ) {
     @Volatile var closed = false
     @Volatile private var lastWindowStart = -1
-    private val windowPieces = (READ_AHEAD_BYTES / pieceLength).toInt().coerceIn(4, 40)
+    /**
+     * How far ahead of the player to fetch urgently: about a minute of video (1% of the file
+     * for a typical film), so short dips in download speed never reach the screen.
+     */
+    private val readAheadBytes = (length / 100).coerceIn(MIN_READ_AHEAD_BYTES, MAX_READ_AHEAD_BYTES)
+    private val windowPieces = (readAheadBytes / pieceLength).toInt().coerceIn(4, 160)
 
     /** Where the file is on disk right now (a download can move it out of the cache). */
     val file: File get() = guarded { File(handle.savePath(), relativePath) }
@@ -329,7 +334,8 @@ class TorrentStream(
     }
 
     companion object {
-        private const val READ_AHEAD_BYTES = 24L * 1024 * 1024
+        private const val MIN_READ_AHEAD_BYTES = 32L * 1024 * 1024
+        private const val MAX_READ_AHEAD_BYTES = 320L * 1024 * 1024
         private const val READ_TIMEOUT_MS = 3 * 60_000L
     }
 }

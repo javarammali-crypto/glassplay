@@ -26,6 +26,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -70,6 +72,7 @@ fun SettingsScreen(onOpenProfile: () -> Unit) {
     val subtitles by Graph.settings.subtitles.collectAsState()
     val profile by Graph.accounts.profile.collectAsState()
     val update by Graph.updater.state.collectAsState()
+    val autoPick by Graph.settings.autoPick.collectAsState()
     fun setSubs(style: SubtitleStyle) = Graph.settings.setSubtitles(style)
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 130.dp)) {
@@ -99,6 +102,40 @@ fun SettingsScreen(onOpenProfile: () -> Unit) {
                         Text("Profile, watch history and stats", style = GlassType.footnote, color = TextSecondary)
                     }
                     Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = TextTertiary)
+                }
+            }
+        }
+
+        item(key = "playback-title") { SectionHeader("Playback") }
+        item(key = "playback") {
+            Card {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Auto-pick best stream", style = GlassType.callout, color = Ink)
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            if (autoPick) {
+                                "Play starts the stream most likely to play smoothly on your connection. " +
+                                    "Use the list button next to Play to choose yourself."
+                            } else {
+                                "Play shows every stream so you can choose."
+                            },
+                            style = GlassType.footnote,
+                            color = TextSecondary,
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Switch(
+                        checked = autoPick,
+                        onCheckedChange = { Graph.settings.setAutoPick(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = Accent,
+                            uncheckedThumbColor = Color.White,
+                            uncheckedTrackColor = TextTertiary,
+                            uncheckedBorderColor = Color.Transparent,
+                        ),
+                    )
                 }
             }
         }

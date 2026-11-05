@@ -42,27 +42,31 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.glassplay.app.Graph
+import com.glassplay.app.data.StreamChoices
 import com.glassplay.app.data.StreamItem
+import com.glassplay.app.data.StreamRanking
 import com.glassplay.app.data.StreamResults
 import com.glassplay.app.data.TorrentLink
 import com.glassplay.app.player.openInExternalPlayer
 import com.glassplay.app.player.openLink
 import com.glassplay.app.player.playDownload
 import com.glassplay.app.player.playStream
+import com.glassplay.app.player.playbackContext
 import com.glassplay.app.ui.components.Spinner
 import com.glassplay.app.ui.components.bounceClick
 import com.glassplay.app.ui.components.noRippleClick
 import com.glassplay.app.ui.theme.GlassType
 import com.glassplay.app.ui.theme.SheetColor
+import com.glassplay.app.ui.theme.StarYellow
 import com.glassplay.app.ui.theme.TextSecondary
 import com.glassplay.app.ui.theme.TextTertiary
 import com.glassplay.app.ui.theme.glass
@@ -99,6 +103,12 @@ fun StreamSheet(target: StreamTarget, onDismiss: () -> Unit) {
             StreamResults(emptyList(), 0, 0)
         }
     }
+    // Ranked the same way auto-pick does, to mark the recommended stream and to let the
+    // player switch to the next one if this one keeps buffering.
+    val ranked = remember(results) {
+        results?.let { r -> StreamRanking.rank(r.groups.flatMap { it.streams }, playbackContext(context, target.meta)) }.orEmpty()
+    }
+    val best = ranked.firstOrNull()?.takeIf { it.score > -20 }?.stream
     // Warm the cache so the player can attach subtitles without waiting.
     LaunchedEffect(target) {
         try {
@@ -199,8 +209,10 @@ fun StreamSheet(target: StreamTarget, onDismiss: () -> Unit) {
                         items(group.streams) { s ->
                             StreamRow(
                                 stream = s,
+                                recommended = s === best,
                                 onPlay = {
                                     onDismiss()
+                                    StreamChoices.remember(target.meta, target.video, ranked, s)
                                     playStream(context, target.meta, target.video, s)
                                 },
                                 onDownload = if (s.url != null || s.isTorrent) { { download(s) } } else null,
@@ -233,7 +245,13 @@ private fun Message(title: String, body: String) {
 }
 
 @Composable
-private fun StreamRow(stream: StreamItem, onPlay: () -> Unit, onDownload: (() -> Unit)?, onExternal: (() -> Unit)?) {
+private fun StreamRow(
+    stream: StreamItem,
+    recommended: Boolean,
+    onPlay: () -> Unit,
+    onDownload: (() -> Unit)?,
+    onExternal: (() -> Unit)?,
+) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -246,6 +264,14 @@ private fun StreamRow(stream: StreamItem, onPlay: () -> Unit, onDownload: (() ->
         Icon(Icons.Rounded.PlayCircle, null, tint = Color.White, modifier = Modifier.size(28.dp))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
+            if (recommended) {
+                Text(
+                    "★ Best for your connection",
+                    style = GlassType.caption,
+                    color = StarYellow,
+                    modifier = Modifier.padding(bottom = 2.dp),
+                )
+            }
             Text(
                 stream.name?.replace('\n', ' ') ?: stream.addonName,
                 style = GlassType.callout,

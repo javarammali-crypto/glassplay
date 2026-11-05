@@ -81,8 +81,10 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
@@ -91,6 +93,8 @@ import androidx.media3.ui.SubtitleView
 import coil3.compose.AsyncImage
 import com.glassplay.app.Graph
 import com.glassplay.app.data.AddonClient
+import com.glassplay.app.data.RankedStream
+import com.glassplay.app.data.StreamChoices
 import com.glassplay.app.data.SubtitleBackground
 import com.glassplay.app.data.SubtitleItem
 import com.glassplay.app.data.SubtitleStyle
@@ -136,6 +140,18 @@ class PlayerActivity : ComponentActivity() {
     private val error = mutableStateOf<String?>(null)
     private val starting = mutableStateOf(true)
 
+    // Stall rescue: when this stream keeps buffering, offer the next best one.
+    private val rescue = mutableStateOf<RankedStream?>(null)
+    private var playedOnce = false
+    private var stallStartedAt = 0L
+    private val stalls = ArrayDeque<Long>()
+    private var lastSeekAt = 0L
+    private var rescueMutedUntil = 0L
+
+    // Download speed seen on direct links, which helps auto-pick choose next time.
+    private var measuredBytes = 0L
+    private var measuredMs = 0L
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val request = PlayRequest.fromIntent(intent)
@@ -163,9 +179,10 @@ class PlayerActivity : ComponentActivity() {
         val renderers = DefaultRenderersFactory(this)
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
             .setEnableDecoderFallback(true)
-        val exo = ExoPlayer.Builder(this, renderers)
+        val builder = ExoPlayer.Builder(this, renderers)
             .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this, httpFactory)))
-            .build()
+        if (!req.url.startsWith("file:")) builder.setLoadControl(streamingLoadControl(req.torrent != null))
+        val exo = builder.build()
         player = exo
 
         // Pick up where the viewer left off, unless it was finished.
@@ -176,6 +193,18 @@ class PlayerActivity : ComponentActivity() {
 
         exo.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
+                val now = System.currentTimeMillis()
+                when (playbackState) {
+                    Player.STATE_READY -> {
+                        playedOnce = true
+                        stallStartedAt = 0
+                    }
+                    // A stall is buffering mid-film that wasn't caused by jumping around.
+                    Player.STATE_BUFFERING -> if (playedOnce && exo.playWhenReady && now - lastSeekAt > 3_000) {
+                        stallStartedAt = now
+                        stalls.addLast(now)
+                    }
+                }
                 if (playbackState == Player.STATE_ENDED) {
                     save(ended = true)
                     val duration = exo.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: 0L
@@ -190,7 +219,28 @@ class PlayerActivity : ComponentActivity() {
             override fun onPlayerError(e: PlaybackException) {
                 onError(exo, e)
             }
+
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int,
+            ) {
+                if (reason == Player.DISCONTINUITY_REASON_SEEK) lastSeekAt = System.currentTimeMillis()
+            }
         })
+        if (req.torrent == null && !req.url.startsWith("file:")) {
+            exo.addAnalyticsListener(object : AnalyticsListener {
+                override fun onBandwidthEstimate(
+                    eventTime: AnalyticsListener.EventTime,
+                    totalLoadTimeMs: Int,
+                    totalBytesLoaded: Long,
+                    bitrateEstimate: Long,
+                ) {
+                    measuredBytes += totalBytesLoaded
+                    measuredMs += totalLoadTimeMs
+                }
+            })
+        }
         exo.playWhenReady = true
 
         setContent {
@@ -201,6 +251,13 @@ class PlayerActivity : ComponentActivity() {
                     isTorrent = req.torrent != null,
                     starting = starting.value,
                     error = error.value,
+                    rescue = rescue.value,
+                    onSwitchStream = { switchTo(it) },
+                    onKeepStream = {
+                        rescue.value = null
+                        rescueMutedUntil = System.currentTimeMillis() + 5 * 60_000
+                        stalls.clear()
+                    },
                     onBack = { finish() },
                 )
             }
@@ -270,6 +327,7 @@ class PlayerActivity : ComponentActivity() {
                     tracking?.played(elapsed, exo.currentPosition, duration)
                     if (++ticks % 5 == 0) save()
                 }
+                checkForStalls(now)
                 last = now
             }
         }
@@ -378,7 +436,29 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    /** Offers the next best stream after a long stall, or after several in a few minutes. */
+    private fun checkForStalls(now: Long) {
+        while (stalls.isNotEmpty() && now - stalls.first() > STALL_WINDOW_MS) stalls.removeFirst()
+        if (rescue.value != null || now < rescueMutedUntil || error.value != null) return
+        val stuck = stallStartedAt > 0 && now - stallStartedAt > LONG_STALL_MS
+        if (stuck || stalls.size >= STALLS_BEFORE_RESCUE) {
+            rescue.value = StreamChoices.next(req.videoId)
+        }
+    }
+
+    /** Opens [next] at the same spot: progress is saved first and the new player resumes from it. */
+    private fun switchTo(next: RankedStream) {
+        val choices = StreamChoices.current ?: return
+        save()
+        StreamChoices.markTried(next.stream)
+        playStream(this, choices.meta, choices.video, next.stream)
+        finish()
+    }
+
     override fun onDestroy() {
+        if (measuredBytes > 8L * 1024 * 1024 && measuredMs > 0) {
+            Graph.settings.recordBandwidth(measuredBytes * 8.0 / measuredMs / 1000)
+        }
         saveJob?.cancel()
         player?.release()
         player = null
@@ -388,6 +468,25 @@ class PlayerActivity : ComponentActivity() {
 
     private companion object {
         const val SUBTITLE_WAIT_MS = 8_000L
+        const val STALL_WINDOW_MS = 3 * 60_000L
+        const val STALLS_BEFORE_RESCUE = 3
+        const val LONG_STALL_MS = 12_000L
+
+        /**
+         * Buffers far more than ExoPlayer's defaults: torrents only start once ~15 s are
+         * ready and refill to 25 s after a stall, and every stream keeps up to two minutes
+         * ahead, within a memory cap.
+         */
+        fun streamingLoadControl(torrent: Boolean): DefaultLoadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                50_000,
+                if (torrent) 150_000 else 120_000,
+                if (torrent) 15_000 else 2_500,
+                if (torrent) 25_000 else 6_000,
+            )
+            .setTargetBufferBytes(96 * 1024 * 1024)
+            .setPrioritizeTimeOverSizeThresholds(false)
+            .build()
         const val LOCAL_SUBTITLE_WAIT_MS = 1_500L
         const val SUBTITLE_FILE_MAX_BYTES = 4L * 1024 * 1024
 
@@ -469,6 +568,9 @@ private fun PlayerScreen(
     isTorrent: Boolean,
     starting: Boolean,
     error: String?,
+    rescue: RankedStream?,
+    onSwitchStream: (RankedStream) -> Unit,
+    onKeepStream: () -> Unit,
     onBack: () -> Unit,
 ) {
     var controlsVisible by remember { mutableStateOf(true) }
@@ -634,6 +736,36 @@ private fun PlayerScreen(
             LoadingScreen(req, isTorrent, status, onBack)
         }
 
+        AnimatedVisibility(
+            visible = rescue != null && error == null,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            enter = fadeIn() + slideInVertically { it / 2 },
+            exit = fadeOut() + slideOutVertically { it / 2 },
+        ) {
+            rescue?.let { next ->
+                Column(
+                    Modifier
+                        .padding(bottom = 96.dp)
+                        .widthIn(max = 460.dp)
+                        .glassDark(RoundedCornerShape(24.dp))
+                        .padding(18.dp),
+                ) {
+                    Text("This stream keeps buffering", style = GlassType.headline, color = Color.White)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Switch to another stream and carry on from here?\n${next.summary}",
+                        style = GlassType.footnote,
+                        color = TextSecondary,
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        GlassButton("Keep watching", onClick = onKeepStream, modifier = Modifier.weight(1f))
+                        GlassButton("Switch", onClick = { onSwitchStream(next) }, primary = true, modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+
         error?.let { msg ->
             Column(
                 Modifier
@@ -647,7 +779,16 @@ private fun PlayerScreen(
                 Spacer(Modifier.height(8.dp))
                 Text(msg, style = GlassType.subhead, color = TextSecondary)
                 Spacer(Modifier.height(16.dp))
-                GlassButton("Choose another stream", onClick = onBack, primary = true)
+                val next = remember(msg) { StreamChoices.next(req.videoId) }
+                if (next != null) {
+                    GlassButton("Try the next best stream", onClick = { onSwitchStream(next) }, primary = true)
+                    Spacer(Modifier.height(4.dp))
+                    Text(next.summary, style = GlassType.caption, color = TextTertiary)
+                    Spacer(Modifier.height(10.dp))
+                    GlassButton("Choose another stream", onClick = onBack)
+                } else {
+                    GlassButton("Choose another stream", onClick = onBack, primary = true)
+                }
             }
         }
     }
